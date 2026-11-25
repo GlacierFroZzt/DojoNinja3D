@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
 
 // =============================================================
 // 1. SISTEMA DE AUDIO Y MÚSICA PROCEDURAL (Web Audio API)
@@ -328,6 +330,9 @@ function crearKatana() {
 
 function crearNinja(colorTraje = 0x1a2430, colorCinta = 0xffffff) {
   const ninja = new THREE.Group();
+  const cuerpoProc = new THREE.Group();
+  ninja.add(cuerpoProc);
+  ninja.cuerpoProcedural = cuerpoProc;
 
   const matTraje = new THREE.MeshStandardMaterial({ color: colorTraje, roughness: 0.7, metalness: 0.1 });
   const matPiel = new THREE.MeshStandardMaterial({ color: 0xffcc99, roughness: 0.8 });
@@ -338,34 +343,34 @@ function crearNinja(colorTraje = 0x1a2430, colorCinta = 0xffffff) {
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.9, 0.45), matTraje);
   torso.position.y = 1.1;
   torso.castShadow = true;
-  ninja.add(torso);
+  cuerpoProc.add(torso);
 
   // Faja
   const faja = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.16, 0.47), matCinta);
   faja.position.y = 0.75;
-  ninja.add(faja);
+  cuerpoProc.add(faja);
 
   // Cabeza
   const cabeza = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.48, 0.48), matTraje);
   cabeza.position.y = 1.82;
   cabeza.castShadow = true;
-  ninja.add(cabeza);
+  cuerpoProc.add(cabeza);
 
   // Hendidura de ojos y ojos
   const piel = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.12), matPiel);
   piel.position.set(0, 1.84, 0.245);
-  ninja.add(piel);
+  cuerpoProc.add(piel);
 
   const ojoI = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 0.03), matOjos);
   ojoI.position.set(-0.08, 1.84, 0.247);
   const ojoD = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 0.03), matOjos);
   ojoD.position.set(0.08, 1.84, 0.247);
-  ninja.add(ojoI, ojoD);
+  cuerpoProc.add(ojoI, ojoD);
 
   // Cinta con nudo
   const cinta = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.5), matCinta);
   cinta.position.y = 1.95;
-  ninja.add(cinta);
+  cuerpoProc.add(cinta);
 
   const colaGeo = new THREE.BoxGeometry(0.08, 0.4, 0.02);
   const cola1 = new THREE.Mesh(colaGeo, matCinta);
@@ -374,7 +379,7 @@ function crearNinja(colorTraje = 0x1a2430, colorCinta = 0xffffff) {
   const cola2 = new THREE.Mesh(colaGeo, matCinta);
   cola2.position.set(0.06, 1.75, -0.26);
   cola2.rotation.set(-0.35, 0, -0.2);
-  ninja.add(cola1, cola2);
+  cuerpoProc.add(cola1, cola2);
 
   // Articulaciones de brazos
   const hombroI = new THREE.Group();
@@ -425,10 +430,121 @@ function crearNinja(colorTraje = 0x1a2430, colorCinta = 0xffffff) {
 }
 
 // =============================================================
+// CARGA DE MODELOS OBJ ORIGINALES DE GITHUB (Ninja y Shuriken)
+// =============================================================
+const textureLoader = new THREE.TextureLoader();
+const texTraje = textureLoader.load('models/ninja/textures/ninja_suit.png');
+const texAcento = textureLoader.load('models/ninja/textures/ninja_accent.png');
+const texMetal = textureLoader.load('models/shuriken/textures/shuriken_metal.png');
+const texFloor = textureLoader.load('models/ninja/textures/dojo_floor.png');
+sueloMat.map = texFloor;
+sueloMat.needsUpdate = true;
+
+let plantillaNinjaMesh = null;
+let plantillaShurikenMesh = null;
+
+const mtlLoader = new MTLLoader();
+mtlLoader.setPath('models/ninja/');
+mtlLoader.load('ninja_walk.mtl', (materials) => {
+  materials.preload();
+  const objLoader = new OBJLoader();
+  objLoader.setMaterials(materials);
+  objLoader.setPath('models/ninja/');
+  objLoader.load('ninja.obj', (obj) => {
+    const box = new THREE.Box3().setFromObject(obj);
+    const center = box.getCenter(new THREE.Vector3());
+    obj.position.set(-center.x, -box.min.y, -center.z);
+
+    obj.traverse((child) => {
+      if (child.isMesh && child.material) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        const m = Array.isArray(child.material) ? child.material[0] : child.material;
+        if (m) {
+          m.map = texTraje;
+          m.roughness = 0.65;
+          m.metalness = 0.2;
+          m.needsUpdate = true;
+        }
+      }
+    });
+
+    plantillaNinjaMesh = obj;
+    aplicarModeloOriginal(jugador, 0x1a2430);
+    aplicarModeloOriginal(enemigoIA, 0x881111);
+    Object.values(otrosNinjas).forEach(n => aplicarModeloOriginal(n, 0x8c2a2a));
+    console.log('Modelo OBJ original del Ninja cargado con éxito!');
+  }, undefined, (err) => console.log('Uso de modelo fallback ninja procedural activo:', err));
+}, undefined, (err) => console.log('MTL fallback activo:', err));
+
+// Carga de Shuriken OBJ original
+const shurikenMtl = new MTLLoader();
+shurikenMtl.setPath('models/shuriken/');
+shurikenMtl.load('shuriken.mtl', (materials) => {
+  materials.preload();
+  const shurikenObj = new OBJLoader();
+  shurikenObj.setMaterials(materials);
+  shurikenObj.setPath('models/shuriken/');
+  shurikenObj.load('shuriken.obj', (obj) => {
+    const box = new THREE.Box3().setFromObject(obj);
+    obj.position.sub(box.getCenter(new THREE.Vector3()));
+    obj.traverse((child) => {
+      if (child.isMesh && child.material) {
+        child.castShadow = true;
+        const m = Array.isArray(child.material) ? child.material[0] : child.material;
+        if (m) {
+          m.map = texMetal;
+          m.metalness = 0.95;
+          m.roughness = 0.2;
+          m.needsUpdate = true;
+        }
+      }
+    });
+    const g = new THREE.Group();
+    g.add(obj);
+    g.scale.set(1.2, 1.2, 2.4);
+    plantillaShurikenMesh = g;
+    console.log('Modelo OBJ original del Shuriken cargado con éxito!');
+  }, undefined, (err) => console.log('Shuriken fallback activo:', err));
+});
+
+function aplicarModeloOriginal(grupoNinja, colorTinte) {
+  if (!plantillaNinjaMesh || !grupoNinja) return;
+  // Ocultar partes básicas procedurales para mostrar el modelo OBJ detallado
+  if (grupoNinja.mallaOriginal) return;
+
+  const clon = plantillaNinjaMesh.clone(true);
+  clon.scale.set(1.0, 1.0, 1.0);
+
+  // Aplicar tinte al clon
+  if (colorTinte) {
+    clon.traverse((child) => {
+      if (child.isMesh && child.material) {
+        const mat = child.material.clone();
+        if (colorTinte !== 0x1a2430) {
+          mat.color.setHex(colorTinte);
+        }
+        child.material = mat;
+      }
+    });
+  }
+
+  // Ocultar geometría procedural básica (torso, cabeza, etc)
+  if (grupoNinja.cuerpoProcedural) {
+    grupoNinja.cuerpoProcedural.visible = false;
+  }
+  grupoNinja.add(clon);
+  grupoNinja.mallaOriginal = clon;
+}
+
+// =============================================================
 // 6. GENERADORES DE OBSTÁCULOS E ÍTEMS ESPECIALES (3 Ítems)
 // Cumple: "Uso de 'ítems' (objetos especiales) (3 como mínimo)"
 // =============================================================
 function crearShurikenMesh() {
+  if (plantillaShurikenMesh) {
+    return plantillaShurikenMesh.clone(true);
+  }
   const g = new THREE.Group();
   const matMetal = new THREE.MeshStandardMaterial({
     color: 0x90a4ae,
@@ -651,7 +767,8 @@ window.addEventListener('keydown', (e) => {
       particulas.emitir(jugador.position, 0x64b5f6, 15);
     }
   }
-  if (e.key === 'p' || e.key === 'P') {
+  if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') {
+    e.preventDefault();
     alternarPausa();
   }
 });
@@ -865,6 +982,10 @@ function animate() {
     jugador.piernaIzq.rotation.x = -anguloPaso;
     jugador.piernaDer.rotation.x = anguloPaso;
     jugador.position.y = Math.abs(Math.sin(walkTimer)) * 0.12;
+    if (jugador.mallaOriginal) {
+      jugador.mallaOriginal.rotation.z = Math.sin(walkTimer * 0.5) * 0.04;
+      jugador.mallaOriginal.position.y = Math.abs(Math.sin(walkTimer)) * 0.08;
+    }
 
     // Animación de Katana Parry
     if (parryTimer > 0) {
