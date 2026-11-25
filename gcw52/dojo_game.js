@@ -3,47 +3,86 @@ import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
 
 // =============================================================
-// 1. SISTEMA DE AUDIO Y MÚSICA PROCEDURAL (Web Audio API)
+// 1. SISTEMA DE AUDIO (KATANA SFX, MÚSICA EN LOOP Y VOLUMEN)
 // Cumple: "Efectos de sonido y música de fondo"
 // =============================================================
 class SistemaSonido {
   constructor() {
     this.ctx = null;
     this.musicaActiva = false;
-    this.intervaloBGM = null;
-    this.notasOrientales = [220, 246.94, 261.63, 293.66, 329.63, 349.23, 392.00, 440];
-    this.pasoBGM = 0;
+    this.volumenMusica = 0.7; // 70% por defecto
+    this.volumenSFX = 0.8;    // 80% por defecto
+    this.katanaBuffer = null;
+
+    // Recuperar preferencias guardadas de volumen
+    try {
+      const vm = localStorage.getItem('dojo_vol_musica');
+      if (vm !== null) this.volumenMusica = parseFloat(vm);
+      const vs = localStorage.getItem('dojo_vol_sfx');
+      if (vs !== null) this.volumenSFX = parseFloat(vs);
+    } catch (e) {}
+
+    // Música de fondo en loop infinito
+    this.bgmAudio = new Audio('audio/musica.mp3');
+    this.bgmAudio.loop = true;
+    this.bgmAudio.volume = this.volumenMusica;
   }
 
   iniciar() {
     if (!this.ctx) {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      if (AudioCtx) this.ctx = new AudioCtx();
+      if (AudioCtx) {
+        this.ctx = new AudioCtx();
+        this.cargarKatanaAudio();
+      }
     }
     if (this.ctx && this.ctx.state === 'suspended') {
       this.ctx.resume();
     }
   }
 
-  playParry() {
-    if (!this.ctx) return;
+  cargarKatanaAudio() {
+    if (this.katanaBuffer || !this.ctx) return;
+    fetch('audio/katana.mp3')
+      .then(res => res.arrayBuffer())
+      .then(ab => this.ctx.decodeAudioData(ab))
+      .then(buf => { this.katanaBuffer = buf; })
+      .catch(() => {});
+  }
+
+  // Reproducir sonido real de espadazo con la katana
+  playEspadazo() {
+    this.iniciar();
+    if (this.volumenSFX <= 0) return;
+
+    if (this.ctx && this.katanaBuffer) {
+      try {
+        const source = this.ctx.createBufferSource();
+        source.buffer = this.katanaBuffer;
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(this.volumenSFX, this.ctx.currentTime);
+        source.connect(gain);
+        gain.connect(this.ctx.destination);
+        source.start(0);
+        return;
+      } catch (e) {}
+    }
+
+    // Fallback con elemento Audio
     try {
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(850, this.ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(1700, this.ctx.currentTime + 0.15);
-      gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.2);
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start();
-      osc.stop(this.ctx.currentTime + 0.2);
+      const a = new Audio('audio/katana.mp3');
+      a.volume = this.volumenSFX;
+      a.play().catch(() => {});
     } catch (e) {}
   }
 
+  playParry() {
+    this.playEspadazo();
+  }
+
   playItem() {
-    if (!this.ctx) return;
+    this.iniciar();
+    if (!this.ctx || this.volumenSFX <= 0) return;
     try {
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
@@ -51,8 +90,8 @@ class SistemaSonido {
       osc.frequency.setValueAtTime(523.25, this.ctx.currentTime);
       osc.frequency.setValueAtTime(659.25, this.ctx.currentTime + 0.08);
       osc.frequency.setValueAtTime(783.99, this.ctx.currentTime + 0.16);
-      gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.35);
+      gain.gain.setValueAtTime(0.25 * this.volumenSFX, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.35);
       osc.connect(gain);
       gain.connect(this.ctx.destination);
       osc.start();
@@ -61,15 +100,16 @@ class SistemaSonido {
   }
 
   playGolpe() {
-    if (!this.ctx) return;
+    this.iniciar();
+    if (!this.ctx || this.volumenSFX <= 0) return;
     try {
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
       osc.type = 'sawtooth';
       osc.frequency.setValueAtTime(160, this.ctx.currentTime);
       osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.25);
-      gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.25);
+      gain.gain.setValueAtTime(0.4 * this.volumenSFX, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.25);
       osc.connect(gain);
       gain.connect(this.ctx.destination);
       osc.start();
@@ -77,35 +117,29 @@ class SistemaSonido {
     } catch (e) {}
   }
 
-  iniciarBGM() {
+  iniciarBGM(desdeInicio = false) {
     this.iniciar();
-    if (this.musicaActiva) return;
     this.musicaActiva = true;
-
-    this.intervaloBGM = setInterval(() => {
-      if (!this.musicaActiva || !this.ctx) return;
-      try {
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'sine';
-        const f = this.notasOrientales[this.pasoBGM % this.notasOrientales.length];
-        this.pasoBGM = (this.pasoBGM + Math.floor(Math.random() * 3) + 1) % this.notasOrientales.length;
-        osc.frequency.setValueAtTime(f, this.ctx.currentTime);
-        gain.gain.setValueAtTime(0.07, this.ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.45);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start();
-        osc.stop(this.ctx.currentTime + 0.45);
-      } catch (e) {}
-    }, 420);
+    if (this.bgmAudio) {
+      this.bgmAudio.volume = this.volumenMusica;
+      this.bgmAudio.loop = true;
+      if (desdeInicio) {
+        try { this.bgmAudio.currentTime = 0; } catch (e) {}
+      }
+      this.bgmAudio.play().catch(() => {});
+    }
   }
 
   detenerBGM() {
     this.musicaActiva = false;
-    if (this.intervaloBGM) {
-      clearInterval(this.intervaloBGM);
-      this.intervaloBGM = null;
+    if (this.bgmAudio) {
+      this.bgmAudio.pause();
+    }
+  }
+
+  reanudarBGM() {
+    if (this.musicaActiva && this.bgmAudio && this.bgmAudio.paused) {
+      this.bgmAudio.play().catch(() => {});
     }
   }
 
@@ -117,6 +151,19 @@ class SistemaSonido {
       this.iniciarBGM();
       return true;
     }
+  }
+
+  setVolumenMusica(vol) {
+    this.volumenMusica = Math.max(0, Math.min(1, vol));
+    if (this.bgmAudio) {
+      this.bgmAudio.volume = this.volumenMusica;
+    }
+    try { localStorage.setItem('dojo_vol_musica', this.volumenMusica.toString()); } catch (e) {}
+  }
+
+  setVolumenSFX(vol) {
+    this.volumenSFX = Math.max(0, Math.min(1, vol));
+    try { localStorage.setItem('dojo_vol_sfx', this.volumenSFX.toString()); } catch (e) {}
   }
 }
 
@@ -1662,17 +1709,21 @@ let intervaloTiempo = null;
 
 const teclas = { izquierda: false, derecha: false };
 
+function ejecutarEspadazo() {
+  if (juegoActivo && !juegoPausado && parryTimer <= 0 && !jugador.estaMuerto) {
+    parryTimer = 0.28;
+    jugador.parryTimer = 0.28;
+    audio.playEspadazo();
+    particulas.emitir(jugador.root.position, 0x64b5f6, 15);
+    red.enviarPoder({ tipo: 'parry' });
+  }
+}
+
 window.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') teclas.izquierda = true;
   if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') teclas.derecha = true;
-  if (e.key === ' ' || e.code === 'Space') {
-    if (juegoActivo && !juegoPausado && parryTimer <= 0 && !jugador.estaMuerto) {
-      parryTimer = 0.28;
-      jugador.parryTimer = 0.28;
-      audio.playParry();
-      particulas.emitir(jugador.root.position, 0x64b5f6, 15);
-      red.enviarPoder({ tipo: 'parry' });
-    }
+  if (e.key === ' ' || e.code === 'Space' || e.key === 'f' || e.key === 'F' || e.key === 'e' || e.key === 'E') {
+    ejecutarEspadazo();
   }
   // PAUSA CON TECLA ESCAPE O P
   if (e.key === 'Escape' || e.key === 'Esc' || e.key === 'p' || e.key === 'P') {
@@ -1680,6 +1731,17 @@ window.addEventListener('keydown', (e) => {
     alternarPausa();
   }
 });
+
+window.addEventListener('pointerdown', (e) => {
+  if (e.target && (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.closest('#modal-opciones') || e.target.closest('#menu-inicio') || e.target.closest('#pantalla-gameover') || e.target.closest('#menu-pausa') || e.target.closest('#pantalla-lobby') || e.target.closest('#modal-unirse-sala') || e.target.closest('#modal-puntuaciones'))) {
+    return;
+  }
+  ejecutarEspadazo();
+});
+
+window.addEventListener('click', () => {
+  audio.iniciar();
+}, { passive: true });
 
 window.addEventListener('keyup', (e) => {
   if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') teclas.izquierda = false;
@@ -2149,7 +2211,7 @@ function empezarPartida() {
   if (elEsp) elEsp.style.display = 'none';
 
   actualizarHUD();
-  audio.iniciarBGM();
+  audio.iniciarBGM(true);
 
   const nombre = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja';
 
@@ -2214,6 +2276,7 @@ function empezarPartida() {
 function terminarJuego(motivo) {
   juegoActivo = false;
   clearInterval(intervaloTiempo);
+  audio.detenerBGM();
 
   const elEsp = document.getElementById('hud-espectador');
   if (elEsp) elEsp.style.display = 'none';
@@ -2240,12 +2303,14 @@ function terminarJuego(motivo) {
 function pausarJuego() {
   if (!juegoActivo) return;
   juegoPausado = true;
+  audio.detenerBGM();
   document.getElementById('menu-pausa').style.display = 'flex';
 }
 
 function reanudarJuego() {
   if (!juegoActivo) return;
   juegoPausado = false;
+  audio.reanudarBGM();
   document.getElementById('menu-pausa').style.display = 'none';
 }
 
@@ -2258,6 +2323,7 @@ function volverAlMenu() {
   juegoActivo = false;
   juegoPausado = false;
   clearInterval(intervaloTiempo);
+  audio.detenerBGM();
   obstaculos.forEach(o => scene.remove(o));
   obstaculos = [];
 
@@ -2363,7 +2429,48 @@ if (btnSonido) {
   };
 }
 
+// Controles de volumen de música y efectos (katana)
+const sliderMusica = document.getElementById('slider-vol-musica');
+const valMusica = document.getElementById('val-vol-musica');
+const sliderSFX = document.getElementById('slider-vol-sfx');
+const valSFX = document.getElementById('val-vol-sfx');
+const btnProbarKatana = document.getElementById('btn-probar-katana');
+
+function sincronizarControlesVolumen() {
+  const pMus = Math.round(audio.volumenMusica * 100);
+  const pSFX = Math.round(audio.volumenSFX * 100);
+  if (sliderMusica) sliderMusica.value = pMus;
+  if (valMusica) valMusica.textContent = `${pMus}%`;
+  if (sliderSFX) sliderSFX.value = pSFX;
+  if (valSFX) valSFX.textContent = `${pSFX}%`;
+}
+
+if (sliderMusica) {
+  sliderMusica.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    audio.setVolumenMusica(v / 100);
+    if (valMusica) valMusica.textContent = `${v}%`;
+  });
+}
+
+if (sliderSFX) {
+  sliderSFX.addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    audio.setVolumenSFX(v / 100);
+    if (valSFX) valSFX.textContent = `${v}%`;
+  });
+}
+
+if (btnProbarKatana) {
+  btnProbarKatana.addEventListener('click', () => {
+    audio.playEspadazo();
+  });
+}
+
+sincronizarControlesVolumen();
+
 function abrirConfig() {
+  sincronizarControlesVolumen();
   const m = document.getElementById('modal-opciones');
   if (m) m.style.display = 'flex';
 }
