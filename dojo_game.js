@@ -711,7 +711,89 @@ function actualizarIA(delta) {
 // Cumple: "Multijugador en tiempo real"
 // =============================================================
 let otrosJugadores = {};
+let codigoSalaActual = 'GLOBAL';
 const socket = io();
+
+function renderizarLobby(datos) {
+  const pantallaLobby = document.getElementById('pantalla-lobby');
+  if (!pantallaLobby) return;
+
+  const menuInicio = document.getElementById('menu-inicio');
+  if (menuInicio) menuInicio.style.display = 'none';
+
+  const modalUnirse = document.getElementById('modal-unirse-sala');
+  if (modalUnirse) modalUnirse.style.display = 'none';
+
+  const pantallaGameOver = document.getElementById('pantalla-gameover');
+  if (pantallaGameOver) pantallaGameOver.style.display = 'none';
+
+  const hudJuego = document.getElementById('hud-juego');
+  if (hudJuego) hudJuego.style.display = 'none';
+
+  pantallaLobby.style.display = 'flex';
+
+  codigoSalaActual = datos.codigoSala || 'GLOBAL';
+  const lobbyCodigo = document.getElementById('lobby-codigo-sala');
+  if (lobbyCodigo) lobbyCodigo.textContent = codigoSalaActual;
+
+  const jugadoresObj = datos.jugadores || {};
+  const listaIds = Object.keys(jugadoresObj);
+  const lobbyContador = document.getElementById('lobby-contador-jugadores');
+  if (lobbyContador) lobbyContador.textContent = `${listaIds.length} ninja(s)`;
+
+  const lobbyLista = document.getElementById('lobby-lista-jugadores');
+  if (lobbyLista) {
+    lobbyLista.innerHTML = '';
+    listaIds.forEach((id) => {
+      const j = jugadoresObj[id];
+      const esAnf = id === datos.anfitrionId;
+      const esYo = socket && id === socket.id;
+
+      const div = document.createElement('div');
+      div.style.cssText = 'background: #2a2a2a; border-radius: 6px; padding: 6px 12px; display: flex; justify-content: space-between; align-items: center; font-size: 14px;';
+      div.innerHTML = `
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#4caf50;"></span>
+          <span style="${esYo ? 'color:#64b5f6; font-weight:bold;' : 'color:#fff;'}">${j.nombre || 'Ninja'} ${esYo ? '(Tú)' : ''}</span>
+        </div>
+        ${esAnf ? '<span style="background:#ff9800; color:#000; font-size:10px; font-weight:bold; padding:2px 6px; border-radius:4px;">ANFITRIÓN</span>' : '<span style="color:#888; font-size:11px;">Listo</span>'}
+      `;
+      lobbyLista.appendChild(div);
+    });
+  }
+
+  const soyAnfitrion = socket ? (datos.anfitrionId === socket.id || !datos.anfitrionId) : true;
+  const btnIniciarLobby = document.getElementById('btn-iniciar-partida-lobby');
+  if (btnIniciarLobby) btnIniciarLobby.style.display = soyAnfitrion ? 'block' : 'none';
+
+  const lobbyAvisoEspera = document.getElementById('lobby-aviso-espera');
+  if (lobbyAvisoEspera) lobbyAvisoEspera.style.display = soyAnfitrion ? 'none' : 'block';
+}
+
+socket.on('joinedLobby', (datos) => {
+  renderizarLobby(datos);
+});
+
+socket.on('lobbyUpdate', (datos) => {
+  renderizarLobby(datos);
+});
+
+socket.on('roomError', (msg) => {
+  const errEl = document.getElementById('error-unirse-sala');
+  if (errEl) {
+    errEl.textContent = msg;
+    errEl.style.display = 'block';
+  } else {
+    alert(msg);
+  }
+});
+
+socket.on('matchStarted', (datos) => {
+  const pantallaLobby = document.getElementById('pantalla-lobby');
+  if (pantallaLobby) pantallaLobby.style.display = 'none';
+  if (datos && datos.codigoSala) codigoSalaActual = datos.codigoSala;
+  empezarPartida();
+});
 
 socket.on('jugadoresActuales', (lista) => {
   Object.keys(lista).forEach(id => {
@@ -1105,7 +1187,10 @@ function animate() {
 function actualizarHUD() {
   document.getElementById('hud-puntos').textContent = puntos;
   document.getElementById('hud-tiempo').textContent = `TIEMPO 00:${tiempo < 10 ? '0' : ''}${tiempo}`;
-  document.getElementById('hud-sala-tag').textContent = `MODO: ${modoActual.toUpperCase()}`;
+  const tagSala = document.getElementById('hud-sala-tag');
+  if (tagSala) {
+    tagSala.textContent = codigoSalaActual === 'GLOBAL' ? `MODO: ${modoActual.toUpperCase()}` : `SALA: ${codigoSalaActual} | ${modoActual.toUpperCase()}`;
+  }
   for (let i = 1; i <= 3; i++) {
     const el = document.getElementById(`vida-${i}`);
     if (el) el.classList.toggle('perdida', i > vidas);
@@ -1113,6 +1198,11 @@ function actualizarHUD() {
 }
 
 function empezarPartida() {
+  const lobby = document.getElementById('pantalla-lobby');
+  if (lobby) lobby.style.display = 'none';
+  const modalUnirse = document.getElementById('modal-unirse-sala');
+  if (modalUnirse) modalUnirse.style.display = 'none';
+
   modoActual = (document.getElementById('sel-modo') || document.getElementById('modo-juego')).value;
   dificultadActual = (document.getElementById('sel-dificultad') || document.getElementById('dificultad-juego')).value;
   const esc = (document.getElementById('sel-escenario') || document.getElementById('escenario-juego')).value;
@@ -1138,7 +1228,7 @@ function empezarPartida() {
   audio.iniciarBGM();
 
   const nombre = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja';
-  socket.emit('entrarJuego', { nombre });
+  socket.emit('entrarJuego', { nombre, codigoSala: codigoSalaActual });
 
   if (intervaloTiempo) clearInterval(intervaloTiempo);
   intervaloTiempo = setInterval(() => {
@@ -1199,6 +1289,21 @@ function volverAlMenu() {
   obstaculos.forEach(o => scene.remove(o));
   obstaculos = [];
 
+  if (socket) socket.emit('leaveGame');
+  Object.keys(otrosJugadores).forEach(id => {
+    if (otrosJugadores[id]) otrosJugadores[id].destruir();
+  });
+  otrosJugadores = {};
+
+  const pantallaLobby = document.getElementById('pantalla-lobby');
+  if (pantallaLobby) pantallaLobby.style.display = 'none';
+  const modalUnirse = document.getElementById('modal-unirse-sala');
+  if (modalUnirse) modalUnirse.style.display = 'none';
+  const modalPunt = document.getElementById('modal-puntuaciones');
+  if (modalPunt) modalPunt.style.display = 'none';
+  const modalOpc = document.getElementById('modal-opciones');
+  if (modalOpc) modalOpc.style.display = 'none';
+
   document.getElementById('menu-inicio').style.display = 'flex';
   document.getElementById('menu-pausa').style.display = 'none';
   document.getElementById('pantalla-gameover').style.display = 'none';
@@ -1213,14 +1318,83 @@ function vincularClick(id, fn) {
   if (el) el.onclick = fn;
 }
 
-vincularClick('btn-jugar', empezarPartida);
-vincularClick('btn-comenzar', empezarPartida);
+vincularClick('btn-jugar', () => {
+  codigoSalaActual = 'GLOBAL';
+  empezarPartida();
+});
+vincularClick('btn-comenzar', () => {
+  codigoSalaActual = 'GLOBAL';
+  empezarPartida();
+});
 vincularClick('btn-reintentar', empezarPartida);
 vincularClick('btn-pausa-hud', pausarJuego);
 vincularClick('btn-reanudar', reanudarJuego);
 vincularClick('btn-salir-menu', volverAlMenu);
 vincularClick('btn-pausa-salir', volverAlMenu);
 vincularClick('btn-gameover-salir', volverAlMenu);
+
+// BOTONES DE SALA Y LOBBY
+vincularClick('btn-crear-sala', () => {
+  const nombre = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja Shinobi';
+  if (socket && socket.connected) {
+    socket.emit('createRoom', { userName: nombre });
+  } else {
+    const codigoLocal = 'LOCAL';
+    renderizarLobby({
+      codigoSala: codigoLocal,
+      anfitrionId: socket ? socket.id : 'local_host',
+      jugadores: {
+        [socket ? socket.id : 'local_host']: { nombre: nombre }
+      }
+    });
+  }
+});
+
+vincularClick('btn-unirse-sala', () => {
+  const errEl = document.getElementById('error-unirse-sala');
+  if (errEl) errEl.style.display = 'none';
+  const inputCod = document.getElementById('input-codigo-sala');
+  if (inputCod) inputCod.value = '';
+  const modal = document.getElementById('modal-unirse-sala');
+  if (modal) modal.style.display = 'flex';
+});
+
+vincularClick('btn-cancelar-unirse', () => {
+  const modal = document.getElementById('modal-unirse-sala');
+  if (modal) modal.style.display = 'none';
+});
+
+vincularClick('btn-confirmar-unirse', () => {
+  const inputCod = document.getElementById('input-codigo-sala');
+  const codigo = inputCod ? inputCod.value.trim().toUpperCase() : '';
+  const errEl = document.getElementById('error-unirse-sala');
+  if (!codigo) {
+    if (errEl) {
+      errEl.textContent = 'Por favor escribe el código de la sala.';
+      errEl.style.display = 'block';
+    }
+    return;
+  }
+  const nombre = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja Shinobi';
+  if (socket && socket.connected) {
+    socket.emit('joinRoom', { userName: nombre, roomCode: codigo });
+  } else {
+    if (errEl) {
+      errEl.textContent = 'Servidor multijugador no conectado. Inicia con "npm start" para jugar en red.';
+      errEl.style.display = 'block';
+    }
+  }
+});
+
+vincularClick('btn-iniciar-partida-lobby', () => {
+  if (socket && socket.connected) {
+    socket.emit('startLobbyMatch');
+  } else {
+    empezarPartida();
+  }
+});
+
+vincularClick('btn-salir-lobby', volverAlMenu);
 
 const btnSonido = document.getElementById('btn-sonido-toggle');
 if (btnSonido) {

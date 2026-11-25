@@ -92,8 +92,53 @@
       </div>
 
       <button id="btn-comenzar" class="btn btn-verde" style="margin-top: 6px;">¡Comenzar Desafío!</button>
+      <div style="display: flex; gap: 8px;">
+        <button id="btn-crear-sala" class="btn btn-verde" style="flex: 1; padding: 10px; font-size: 13px;">Crear Sala</button>
+        <button id="btn-unirse-sala" class="btn btn-azul" style="flex: 1; padding: 10px; font-size: 13px;">Unirse a Sala</button>
+      </div>
       <button id="btn-puntuaciones" class="btn">Tabla de Puntuaciones (REST)</button>
       <button id="btn-opciones" class="btn" style="background: #37474f;">Configuraciones</button>
+    </div>
+  </div>
+
+  <!-- MODAL: UNIRSE A SALA -->
+  <div id="modal-unirse-sala" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); z-index: 130; align-items: center; justify-content: center;">
+    <div class="caja-menu" style="max-width: 360px;">
+      <h3 style="color: #64b5f6;">Unirse a Sala</h3>
+      <p style="font-size: 13px; color: #ccc;">Ingresa el código de 4 caracteres de la sala:</p>
+      <input type="text" id="input-codigo-sala" class="input-texto" placeholder="Ej: ABCD" maxlength="6" style="text-transform: uppercase; font-size: 20px; text-align: center; letter-spacing: 4px; font-weight: bold;">
+      <div id="error-unirse-sala" style="color: #ff5252; font-size: 12px; display: none;"></div>
+      <button id="btn-confirmar-unirse" class="btn btn-verde" style="margin-top: 8px;">Entrar a la Sala</button>
+      <button id="btn-cancelar-unirse" class="btn btn-rojo">Cancelar</button>
+    </div>
+  </div>
+
+  <!-- PANTALLA: LOBBY DE ESPERA MULTIJUGADOR -->
+  <div id="pantalla-lobby" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(10, 14, 20, 0.94); z-index: 105; align-items: center; justify-content: center;">
+    <div class="caja-menu" style="max-width: 440px; border-color: #2196f3;">
+      <h2 style="color: #64b5f6; font-size: 24px;">Lobby de Espera</h2>
+      <div style="background: rgba(33, 150, 243, 0.15); border: 1px dashed #2196f3; border-radius: 8px; padding: 12px; margin: 4px 0;">
+        <div style="font-size: 12px; color: #aaa; text-transform: uppercase; letter-spacing: 1px;">CÓDIGO DE SALA</div>
+        <div id="lobby-codigo-sala" style="font-size: 32px; font-weight: 900; color: #ffb74d; letter-spacing: 6px; font-family: monospace;">----</div>
+        <div style="font-size: 11px; color: #90caf9; margin-top: 2px;">Comparte este código para que tus amigos se unan</div>
+      </div>
+
+      <div style="text-align: left; margin: 6px 0;">
+        <div style="display: flex; justify-content: space-between; font-size: 13px; color: #bbb; border-bottom: 1px solid #444; padding-bottom: 4px;">
+          <span>Jugadores Conectados:</span>
+          <span id="lobby-contador-jugadores">1 ninja</span>
+        </div>
+        <div id="lobby-lista-jugadores" style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px; max-height: 160px; overflow-y: auto;">
+          <!-- Items de jugadores conectados -->
+        </div>
+      </div>
+
+      <div id="lobby-aviso-espera" style="font-size: 13px; color: #ffb74d; display: none;">
+        Esperando a que el anfitrión inicie la partida...
+      </div>
+
+      <button id="btn-iniciar-partida-lobby" class="btn btn-verde" style="display: none; font-size: 16px; padding: 12px;">¡Iniciar Partida!</button>
+      <button id="btn-salir-lobby" class="btn btn-rojo">Salir al Menú</button>
     </div>
   </div>
 

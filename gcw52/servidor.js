@@ -5,14 +5,15 @@ const { Server } = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, { cors: { origin: '*' } });
 const PUERTO = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(express.static(__dirname));
+app.use(express.static(path.join(__dirname, '..')));
 
 // ==========================================
-// 1. SERVICIO WEB (API REST SIMPLE)
+// 1. SERVICIO WEB (API REST SIMPLE - RÚBRICA REQ 7)
 // ==========================================
 let puntuaciones = [
   { nombre: 'Juan', puntos: 120, dificultad: 'Facil', escenario: 'Dia' },
@@ -34,47 +35,195 @@ app.post('/api/puntuaciones', (req, res) => {
     escenario: req.body.escenario || 'Dia'
   };
   puntuaciones.push(nueva);
-  // Ordenar de mayor a menor
   puntuaciones.sort((a, b) => b.puntos - a.puntos);
   res.json({ ok: true, mensaje: 'Guardado con exito' });
 });
 
 // ==========================================
-// 2. SOCKET.IO (JUEGO MULTIJUGADOR SIMPLE)
+// 2. SISTEMA DE SALAS Y LOBBY (SOCKET.IO MULTIJUGADOR)
 // ==========================================
-let jugadores = {};
+// Estructura de salas:
+// salas[codigo] = { codigo, anfitrionId, jugadores: {}, estado: 'lobby' | 'jugando' }
+const salas = {};
+
+function generarCodigoSala() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let codigo = '';
+  for (let i = 0; i < 4; i++) {
+    codigo += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return codigo;
+}
+
+function eliminarJugadorDeSala(socket) {
+  const codigoSala = socket.codigoSala;
+  const idJugador = socket.id;
+
+  if (codigoSala && salas[codigoSala]) {
+    const sala = salas[codigoSala];
+    if (sala.jugadores[idJugador]) {
+      delete sala.jugadores[idJugador];
+      socket.leave(codigoSala);
+      io.to(codigoSala).emit('jugadorSalio', idJugador);
+      console.log(`[Sala ${codigoSala}] Jugador ${idJugador} salió. Restantes: ${Object.keys(sala.jugadores).length}`);
+
+      const ids = Object.keys(sala.jugadores);
+      if (ids.length === 0) {
+        if (codigoSala !== 'GLOBAL') {
+          delete salas[codigoSala];
+          console.log(`[Sala ${codigoSala}] Sala eliminada por estar vacía.`);
+        }
+      } else {
+        if (sala.anfitrionId === idJugador) {
+          sala.anfitrionId = ids[0];
+          console.log(`[Sala ${codigoSala}] Nuevo anfitrión asignado: ${sala.anfitrionId}`);
+        }
+        io.to(codigoSala).emit('lobbyUpdate', {
+          codigoSala: codigoSala,
+          anfitrionId: sala.anfitrionId,
+          jugadores: sala.jugadores,
+          estado: sala.estado
+        });
+      }
+    }
+  }
+  socket.codigoSala = null;
+}
 
 io.on('connection', (socket) => {
-  console.log('Jugador conectado:', socket.id);
+  const idJugador = socket.id;
+  console.log(`[Conexión] Jugador conectado: ${idJugador}`);
 
-  socket.on('entrarJuego', (datos) => {
-    jugadores[socket.id] = {
-      id: socket.id,
-      nombre: datos.nombre || 'Jugador',
+  function unirASala(codigoSala, nombreUsuario, entrarEnLobby = false) {
+    eliminarJugadorDeSala(socket);
+
+    if (!salas[codigoSala]) {
+      salas[codigoSala] = {
+        codigo: codigoSala,
+        anfitrionId: idJugador,
+        jugadores: {},
+        estado: entrarEnLobby ? 'lobby' : 'jugando'
+      };
+    }
+
+    const sala = salas[codigoSala];
+    socket.codigoSala = codigoSala;
+    socket.join(codigoSala);
+
+    sala.jugadores[idJugador] = {
+      id: idJugador,
+      nombre: nombreUsuario || 'Ninja ' + idJugador.substring(0, 4),
       x: 0,
       y: 0,
       z: 0
     };
-    // Avisar al jugador actual y a los demas
-    socket.emit('jugadoresActuales', jugadores);
-    socket.broadcast.emit('nuevoJugador', jugadores[socket.id]);
+
+    console.log(`[Sala ${codigoSala}] Jugador ${idJugador} (${nombreUsuario}) entró. Total: ${Object.keys(sala.jugadores).length}`);
+
+    if (entrarEnLobby || sala.estado === 'lobby') {
+      socket.emit('joinedLobby', {
+        codigoSala: codigoSala,
+        esAnfitrion: sala.anfitrionId === idJugador,
+        anfitrionId: sala.anfitrionId,
+        jugadorLocal: sala.jugadores[idJugador],
+        todosJugadores: sala.jugadores
+      });
+      io.to(codigoSala).emit('lobbyUpdate', {
+        codigoSala: codigoSala,
+        anfitrionId: sala.anfitrionId,
+        jugadores: sala.jugadores,
+        estado: sala.estado
+      });
+    } else {
+      socket.emit('jugadoresActuales', sala.jugadores);
+      socket.to(codigoSala).emit('nuevoJugador', sala.jugadores[idJugador]);
+    }
+  }
+
+  // Partida rápida tradicional (entra directo a GLOBAL)
+  socket.on('entrarJuego', (datos) => {
+    const nombre = datos ? (datos.nombre || datos.userName) : null;
+    const salaPedida = datos && datos.codigoSala ? datos.codigoSala : 'GLOBAL';
+    unirASala(salaPedida, nombre, false);
   });
 
-  socket.on('mover', (pos) => {
-    if (jugadores[socket.id]) {
-      jugadores[socket.id].x = pos.x;
-      jugadores[socket.id].y = pos.y;
-      jugadores[socket.id].z = pos.z;
-      socket.broadcast.emit('jugadorMovido', jugadores[socket.id]);
+  // Crear sala nueva privada con código único y lobby
+  socket.on('createRoom', (datos) => {
+    let codigo = generarCodigoSala();
+    while (salas[codigo]) {
+      codigo = generarCodigoSala();
+    }
+    const nombre = datos ? (datos.userName || datos.nombre) : null;
+    unirASala(codigo, nombre, true);
+  });
+
+  // Unirse a una sala privada existente mediante código
+  socket.on('joinRoom', (datos) => {
+    const rawCodigo = datos && datos.roomCode ? datos.roomCode.trim().toUpperCase() : '';
+    const nombre = datos ? (datos.userName || datos.nombre) : null;
+    if (!rawCodigo) {
+      socket.emit('roomError', 'Debes escribir el código de sala.');
+      return;
+    }
+    if (!salas[rawCodigo]) {
+      socket.emit('roomError', `La sala "${rawCodigo}" no existe o ya no está disponible.`);
+      return;
+    }
+    const sala = salas[rawCodigo];
+    const entrarEnLobby = sala.estado === 'lobby';
+    unirASala(rawCodigo, nombre, entrarEnLobby);
+  });
+
+  // El anfitrión inicia la partida para todos en la sala
+  socket.on('startLobbyMatch', () => {
+    const codigoSala = socket.codigoSala;
+    if (codigoSala && salas[codigoSala]) {
+      const sala = salas[codigoSala];
+      if (sala.anfitrionId === idJugador) {
+        sala.estado = 'jugando';
+        io.to(codigoSala).emit('matchStarted', {
+          codigoSala: codigoSala,
+          todosJugadores: sala.jugadores
+        });
+      }
     }
   });
 
+  // Movimiento de jugador en tiempo real (solo se envía a los miembros de la misma sala)
+  socket.on('mover', (pos) => {
+    const codigoSala = socket.codigoSala;
+    if (codigoSala && salas[codigoSala] && salas[codigoSala].jugadores[idJugador]) {
+      salas[codigoSala].jugadores[idJugador].x = pos.x;
+      salas[codigoSala].jugadores[idJugador].y = pos.y;
+      salas[codigoSala].jugadores[idJugador].z = pos.z;
+      socket.to(codigoSala).emit('jugadorMovido', {
+        id: idJugador,
+        x: pos.x,
+        y: pos.y,
+        z: pos.z
+      });
+    }
+  });
+
+  // Salir de partida o lobby
+  socket.on('leaveGame', () => {
+    eliminarJugadorDeSala(socket);
+  });
+
   socket.on('disconnect', () => {
-    delete jugadores[socket.id];
-    io.emit('jugadorSalio', socket.id);
+    eliminarJugadorDeSala(socket);
+    console.log(`[Desconexión] ${idJugador} desconectado.`);
   });
 });
 
-server.listen(PUERTO, () => {
-  console.log('Servidor corriendo en http://localhost:' + PUERTO);
-});
+if (require.main === module) {
+  server.listen(PUERTO, () => {
+    console.log(`====================================================`);
+    console.log(`  Dojo Ninja 3D - Servidor Activo                  `);
+    console.log(`  URL: http://localhost:${PUERTO}                   `);
+    console.log(`  Salas y Lobby de Espera Multijugador Habilitados `);
+    console.log(`====================================================`);
+  });
+}
+
+module.exports = server;

@@ -78,6 +78,15 @@
       background: #661f1f;
       border-color: #b33939;
     }
+    .btn-azul {
+      background: #153b54;
+      border-color: #2980b9;
+      color: #d0e8ff;
+    }
+    .btn-azul:hover {
+      background: #1f5377;
+      border-color: #4ba3e3;
+    }
     .input-texto {
       font-family: inherit;
       background: #1f1b17;
