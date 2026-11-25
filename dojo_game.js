@@ -591,21 +591,21 @@ class JugadorNinja {
 
   crearEtiqueta(texto) {
     const c = document.createElement('canvas');
-    c.width = 256; c.height = 64;
+    c.width = 360; c.height = 64;
     const ctx = c.getContext('2d');
     ctx.fillStyle = 'rgba(0,0,0,0.85)';
-    ctx.fillRect(8, 8, 240, 48);
+    ctx.fillRect(6, 6, 348, 52);
     const bordeHex = (this.color && this.color.ropa) ? '#' + (this.color.ropa).toString(16).padStart(6, '0') : '#64b5f6';
     ctx.strokeStyle = bordeHex;
     ctx.lineWidth = 3;
-    ctx.strokeRect(8, 8, 240, 48);
+    ctx.strokeRect(6, 6, 348, 52);
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 20px Arial';
+    ctx.font = 'bold 18px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(texto, 128, 32);
+    ctx.fillText(texto, 180, 32);
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false }));
-    sprite.scale.set(2.2, 0.55, 1);
+    sprite.scale.set(3.0, 0.55, 1);
     sprite.position.y = 2.4;
     return sprite;
   }
@@ -887,6 +887,9 @@ class RedDojo {
     } else if (msg.tipo === 'PLAYER_DEATH') {
       this.disparar('muerteJugador', { id: msg.id, nombre: msg.nombre });
       this.enviarAClientes(msg, msg.id);
+    } else if (msg.tipo === 'MATCH_OVER') {
+      this.disparar('partidaTerminada', { motivo: msg.motivo });
+      this.enviarAClientes(msg);
     } else if (msg.tipo === 'PLAYER_LEFT') {
       delete this.jugadores[msg.id];
       this.disparar('jugadorSalio', msg.id);
@@ -1016,6 +1019,8 @@ class RedDojo {
       }
     } else if (msg.tipo === 'TIME_SYNC') {
       this.disparar('tiempoSincronizado', msg.tiempo);
+    } else if (msg.tipo === 'MATCH_OVER') {
+      this.disparar('partidaTerminada', { motivo: msg.motivo });
     } else if (msg.tipo === 'PLAYER_LEFT') {
       if (msg.id !== this.miId) {
         this.disparar('jugadorSalio', msg.id);
@@ -1047,6 +1052,8 @@ class RedDojo {
     };
     if (this.isHost) {
       this.enviarAClientes(msg);
+    } else {
+      if (this.broadcastChannel) try { this.broadcastChannel.postMessage(msg); } catch (e) {}
     }
   }
 
@@ -1103,6 +1110,21 @@ class RedDojo {
     };
     if (this.isHost) {
       this.enviarAClientes(msg);
+    } else {
+      if (this.broadcastChannel) try { this.broadcastChannel.postMessage(msg); } catch (e) {}
+    }
+  }
+
+  enviarFinPartida(datos) {
+    const msg = {
+      tipo: 'MATCH_OVER',
+      motivo: (datos && datos.motivo) || '¡Fin de la partida!'
+    };
+    if (this.isHost) {
+      this.enviarAClientes(msg);
+    } else {
+      if (this.broadcastChannel) try { this.broadcastChannel.postMessage(msg); } catch (e) {}
+      if (this.peerHostConn && this.peerHostConn.open) try { this.peerHostConn.send(msg); } catch (e) {}
     }
   }
 
@@ -1401,7 +1423,16 @@ red.on('muerteJugador', (datos) => {
   if (otrosJugadores[datos.id]) {
     otrosJugadores[datos.id].morir();
   }
-  mostrarAviso('hud-aviso-cerca', `¡${datos.nombre || 'El aliado'} ha caído!`);
+
+  // Comprobar si queda algún ninja con vida en la partida
+  const quedaAlguienVivo = !jugador.estaMuerto || Object.values(otrosJugadores).some(p => !p.estaMuerto);
+  if (!quedaAlguienVivo) {
+    const motivo = '¡Todos los ninjas han caído!';
+    terminarJuego(motivo);
+    red.enviarFinPartida({ motivo });
+  } else {
+    mostrarAviso('hud-aviso-cerca', `¡${datos.nombre || 'El aliado'} ha caído! ¡Resiste! ⚔️`, 3000);
+  }
 });
 
 red.on('tiempoSincronizado', (t) => {
@@ -1409,8 +1440,16 @@ red.on('tiempoSincronizado', (t) => {
     tiempo = t;
     actualizarHUD();
     if (tiempo <= 0) {
-      terminarJuego('¡Tiempo cumplido! ¡Misión superada!');
+      const sobrevivido = !jugador.estaMuerto || Object.values(otrosJugadores).some(p => !p.estaMuerto);
+      const motivo = sobrevivido ? '¡Tiempo cumplido! ¡Misión superada!' : '¡Todos los ninjas han caído!';
+      terminarJuego(motivo);
     }
+  }
+});
+
+red.on('partidaTerminada', (datos) => {
+  if (juegoActivo) {
+    terminarJuego(datos.motivo || '¡Fin de la partida!');
   }
 });
 
@@ -1592,9 +1631,16 @@ function crearElementoPorTipo(tipo, posX, idObstaculo = null) {
   return obj;
 }
 
+function puedeGenerarObstaculos() {
+  if (red.isHost) return true;
+  const hostId = red.anfitrionId;
+  if (!hostId || !otrosJugadores[hostId]) return true;
+  return false;
+}
+
 function generarElemento(delta) {
-  // Solo el anfitrión genera los obstáculos de la sala para que ambos esquiven lo mismo
-  if (!red.isHost) {
+  // Solo el anfitrión (o el relevo si el anfitrión se desconectó) genera los obstáculos de la sala
+  if (!puedeGenerarObstaculos() || !juegoActivo || juegoPausado) {
     return;
   }
 
@@ -1623,12 +1669,12 @@ function generarElemento(delta) {
   }
 }
 
-function mostrarAviso(elemId, texto) {
+function mostrarAviso(elemId, texto, duracion = 650) {
   const el = document.getElementById(elemId);
   if (!el) return;
   if (texto) el.textContent = texto;
   el.classList.add('mostrar');
-  setTimeout(() => el.classList.remove('mostrar'), 650);
+  setTimeout(() => el.classList.remove('mostrar'), duracion);
 }
 
 function flashImpacto() {
@@ -1643,18 +1689,19 @@ function flashImpacto() {
 // 12. DETECCIÓN Y USO DE COLISIONES
 // =============================================================
 function procesarColisiones() {
-  if (jugador.estaMuerto) return;
   const localPos = jugador.root.position;
   const esParry = parryTimer > 0;
   const conEscudo = jugador.escudoTimer > 0;
 
   for (let i = obstaculos.length - 1; i >= 0; i--) {
     const obj = obstaculos[i];
+    if (!obj) continue;
+
     const dx = Math.abs(obj.position.x - localPos.x);
     const dz = obj.position.z - localPos.z;
 
-    // Colisión física
-    if (dx < 1.15 && Math.abs(dz) < 1.0) {
+    // Colisión física con jugador local (solo si sigue vivo)
+    if (!jugador.estaMuerto && dx < 1.15 && Math.abs(dz) < 1.0) {
       scene.remove(obj);
       obstaculos.splice(i, 1);
 
@@ -1714,7 +1761,17 @@ function procesarColisiones() {
             const nombreJug = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja';
             jugador.morir();
             red.enviarMuerte({ id: red.miId, nombre: nombreJug });
-            terminarJuego('¡Has caído en batalla!');
+
+            const hayCompaneroVivo = Object.values(otrosJugadores).some(p => !p.estaMuerto);
+            if (hayCompaneroVivo) {
+              mostrarAviso('hud-aviso-cerca', '💀 ¡HAS CAÍDO! Modo Espectador — Apoyando a tu compañero...', 4000);
+              const elEsp = document.getElementById('hud-espectador');
+              if (elEsp) elEsp.style.display = 'block';
+            } else {
+              const motivo = '¡Todos los ninjas han caído!';
+              terminarJuego(motivo);
+              red.enviarFinPartida({ motivo });
+            }
           }
         }
       } else if (obj.tipo === 'pergamino') {
@@ -1732,7 +1789,7 @@ function procesarColisiones() {
     if (obj.position.z > 6) {
       scene.remove(obj);
       obstaculos.splice(i, 1);
-      if (obj.tipo === 'shuriken') {
+      if (obj.tipo === 'shuriken' && !jugador.estaMuerto) {
         puntos += 20;
         mostrarAviso('hud-aviso-cerca', 'CERCA +20');
         actualizarHUD();
@@ -1765,7 +1822,18 @@ function animate() {
     }
 
     jugador.actualizar(delta, seMueve);
-    luzFocal.target = jugador.root;
+
+    // Si estoy muerto, enfocar con la luz focal al compañero que sigue vivo
+    if (jugador.estaMuerto) {
+      const companeroVivo = Object.values(otrosJugadores).find(p => !p.estaMuerto);
+      if (companeroVivo) {
+        luzFocal.target = companeroVivo.root;
+      } else {
+        luzFocal.target = jugador.root;
+      }
+    } else {
+      luzFocal.target = jugador.root;
+    }
 
     // Multijugador: Enviar posición en tiempo real
     red.enviarMovimiento({ x: jugador.root.position.x, y: 0, z: 0 });
@@ -1844,6 +1912,8 @@ function empezarPartida() {
   document.getElementById('pantalla-gameover').style.display = 'none';
   document.getElementById('menu-pausa').style.display = 'none';
   document.getElementById('hud-juego').style.display = 'block';
+  const elEsp = document.getElementById('hud-espectador');
+  if (elEsp) elEsp.style.display = 'none';
 
   actualizarHUD();
   audio.iniciarBGM();
@@ -1888,18 +1958,21 @@ function empezarPartida() {
     }
   }
 
-  // Temporizador de partida sincronizado por el anfitrión
+  // Temporizador de partida sincronizado por el anfitrión (o relevo)
   if (intervaloTiempo) clearInterval(intervaloTiempo);
   intervaloTiempo = setInterval(() => {
     if (!juegoPausado && juegoActivo) {
-      if (!red.isHost) {
+      if (!puedeGenerarObstaculos()) {
         return; // El invitado sincroniza el tiempo con el anfitrión
       }
       tiempo--;
       actualizarHUD();
       red.enviarTiempo(tiempo);
       if (tiempo <= 0) {
-        terminarJuego('¡Tiempo cumplido! ¡Misión superada!');
+        const sobrevivido = !jugador.estaMuerto || Object.values(otrosJugadores).some(p => !p.estaMuerto);
+        const motivo = sobrevivido ? '¡Tiempo cumplido! ¡Misión superada!' : '¡Todos los ninjas han caído!';
+        terminarJuego(motivo);
+        red.enviarFinPartida({ motivo });
       }
     }
   }, 1000);
@@ -1908,6 +1981,9 @@ function empezarPartida() {
 function terminarJuego(motivo) {
   juegoActivo = false;
   clearInterval(intervaloTiempo);
+
+  const elEsp = document.getElementById('hud-espectador');
+  if (elEsp) elEsp.style.display = 'none';
 
   document.getElementById('gameover-titulo').textContent = motivo.includes('superada') ? '¡MISIÓN CUMPLIDA!' : '¡GAME OVER!';
   document.getElementById('gameover-subtitulo').textContent = motivo;
@@ -1951,6 +2027,9 @@ function volverAlMenu() {
   clearInterval(intervaloTiempo);
   obstaculos.forEach(o => scene.remove(o));
   obstaculos = [];
+
+  const elEsp = document.getElementById('hud-espectador');
+  if (elEsp) elEsp.style.display = 'none';
 
   red.salir();
   Object.keys(otrosJugadores).forEach(id => {
