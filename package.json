@@ -1,9 +1,9 @@
 {
-  "name": "dojo-ninja-3d-root",
+  "name": "dojo-ninja-3d",
   "version": "1.0.0",
-  "private": true,
+  "description": "Videojuego Dojo Ninja 3D",
   "scripts": {
-    "start": "node gcw52/servidor.js"
+    "start": "node servidor.js"
   },
   "dependencies": {
     "express": "^4.21.2",

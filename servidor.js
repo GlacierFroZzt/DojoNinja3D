@@ -10,7 +10,6 @@ const PUERTO = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(express.static(__dirname));
-app.use(express.static(path.join(__dirname, '..')));
 
 const DB_LOCAL_FILE = path.join(__dirname, 'puntuaciones_db.json');
 const DEFAULT_SCORES_SRV = [
