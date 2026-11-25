@@ -1611,20 +1611,9 @@ function crearShurikenIAMesh(targetNombre = '') {
   g.add(shurikenMesh);
   g.shurikenMesh = shurikenMesh;
 
-  // Anillo de energía exterior orbital que gira en contra-rotación
-  const matAnilloIA = new THREE.MeshBasicMaterial({
-    color: 0xff3d00,
-    wireframe: true,
-    transparent: true,
-    opacity: 0.85
-  });
-  const anilloIA = new THREE.Mesh(new THREE.TorusGeometry(1.2, 0.04, 8, 24), matAnilloIA);
-  g.add(anilloIA);
-  g.anilloIA = anilloIA;
-
   // Luz dinámica propia que ilumina la pista en tiempo real
   const luzIA = new THREE.PointLight(0xff1744, 3.8, 9);
-  luzIA.position.set(0, 0, 0);
+  luzIA.position.set(0, 0.2, 0);
   g.add(luzIA);
 
   // Etiqueta flotante holográfica sobre el shuriken IA
@@ -1648,11 +1637,11 @@ function crearShurikenIAMesh(targetNombre = '') {
     depthTest: false
   }));
   spriteTag.scale.set(2.4, 0.5, 1);
-  spriteTag.position.set(0, 1.4, 0);
+  spriteTag.position.set(0, 1.1, 0);
   g.add(spriteTag);
   g.spriteTag = spriteTag;
 
-  g.scale.set(1.25, 1.25, 1.25);
+  g.scale.set(1.3, 1.3, 1.3);
   return g;
 }
 
@@ -2058,10 +2047,10 @@ function animate() {
       if (obs.tipo === 'shuriken') {
         obs.rotation.z += 25 * delta;
       } else if (obs.tipo === 'shuriken_ia') {
-        obs.rotation.z += 35 * delta;
-        if (obs.anilloIA) {
-          obs.anilloIA.rotation.x += 8 * delta;
-          obs.anilloIA.rotation.y += 6 * delta;
+        if (obs.shurikenMesh) {
+          obs.shurikenMesh.rotation.z += 30 * delta;
+        } else {
+          obs.rotation.z += 30 * delta;
         }
         if (Math.random() < 0.35) {
           particulas.emitir(obs.position, 0xff1744, 2);
