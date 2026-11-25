@@ -4,7 +4,7 @@ Proyecto desarrollado con **Three.js**, **Node.js (Express)** y **Socket.io** si
 
 ---
 
-## 📋 Cumplimiento de la Rúbrica de Evaluación
+## Cumplimiento de la Rúbrica de Evaluación
 
 | Requisito | A Evaluar | Puntos | Estado | Dónde se encuentra |
 | :--- | :--- | :---: | :---: | :--- |
@@ -18,7 +18,7 @@ Proyecto desarrollado con **Three.js**, **Node.js (Express)** y **Socket.io** si
 
 ---
 
-## 🚀 Cómo Ejecutar el Proyecto
+## Cómo Ejecutar el Proyecto
 
 1. Abrir terminal en la carpeta del proyecto:
    ```bash

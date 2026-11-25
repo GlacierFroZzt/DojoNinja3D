@@ -640,7 +640,7 @@ class JugadorNinja {
       this.katana.position.set(0.6, 0.1, 0.3);
       this.katana.rotation.set(0, 0, 1.4);
     }
-    this.actualizarEtiqueta(`${this.nombre} (DERROTADO 💀)`);
+    this.actualizarEtiqueta(`${this.nombre} (DERROTADO)`);
     particulas.emitir(this.root.position, 0xff1744, 45);
     audio.playGolpe();
   }
@@ -1380,9 +1380,9 @@ red.on('obstaculoGenerado', (datos) => {
 
     if (datos.tipo === 'shuriken_ia') {
       if (datos.targetId === red.miId) {
-        mostrarAviso('hud-aviso-cerca', '⚠️ ¡SHURIKEN IA TE PERSIGUE! ¡PARRY OBLIGATORIO! ⚔️', 2600);
+        mostrarAviso('hud-aviso-cerca', '¡SHURIKEN IA TE PERSIGUE! ¡PARRY OBLIGATORIO!', 2600);
       } else if (datos.targetNombre) {
-        mostrarAviso('hud-aviso-cerca', `🤖 Shuriken IA persigue a ${datos.targetNombre}`, 2200);
+        mostrarAviso('hud-aviso-cerca', `Shuriken IA persigue a ${datos.targetNombre}`, 2200);
       }
     }
   }
@@ -1403,7 +1403,7 @@ red.on('impactoObstaculo', (datos) => {
   } else if (datos.tipo === 'parry_ia') {
     particulas.emitir(posImpacto, 0xffd700, 50);
     audio.playParry();
-    mostrarAviso('hud-aviso-parry', '⚔️ ¡ALIADO PARREÓ AL SHURIKEN IA!', 1300);
+    mostrarAviso('hud-aviso-parry', '¡ALIADO PARREÓ AL SHURIKEN IA!', 1300);
   } else if (datos.tipo === 'golpe_ia') {
     particulas.emitir(posImpacto, 0xff1744, 40);
     audio.playGolpe();
@@ -1454,7 +1454,7 @@ red.on('muerteJugador', (datos) => {
     terminarJuego(motivo);
     red.enviarFinPartida({ motivo });
   } else {
-    mostrarAviso('hud-aviso-cerca', `¡${datos.nombre || 'El aliado'} ha caído! ¡Resiste! ⚔️`, 3000);
+    mostrarAviso('hud-aviso-cerca', `¡${datos.nombre || 'El aliado'} ha caído! ¡Resiste!`, 3000);
   }
 });
 
@@ -1640,7 +1640,7 @@ function crearShurikenIAMesh(targetNombre = '') {
   ctx.font = 'bold 19px Arial';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const textoTag = targetNombre ? `🤖 IA ➔ ${targetNombre}` : '🤖 SHURIKEN IA';
+  const textoTag = targetNombre ? `IA -> ${targetNombre}` : 'SHURIKEN IA';
   ctx.fillText(textoTag, 160, 32);
 
   const spriteTag = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -1795,9 +1795,9 @@ function generarElemento(delta) {
       });
 
       if (objetivo.id === red.miId) {
-        mostrarAviso('hud-aviso-cerca', '⚠️ ¡SHURIKEN IA TE PERSIGUE! ¡PARRY OBLIGATORIO! ⚔️', 2600);
+        mostrarAviso('hud-aviso-cerca', '¡SHURIKEN IA TE PERSIGUE! ¡PARRY OBLIGATORIO!', 2600);
       } else {
-        mostrarAviso('hud-aviso-cerca', `🤖 Shuriken IA persigue a ${objetivo.nombre}`, 2200);
+        mostrarAviso('hud-aviso-cerca', `Shuriken IA persigue a ${objetivo.nombre}`, 2200);
       }
     }
   }
@@ -1868,7 +1868,7 @@ function procesarColisiones() {
         puntos += 30;
         audio.playItem();
         particulas.emitir(localPos, 0xff1744, 25);
-        mostrarAviso('hud-aviso-cerca', '❤️ +1 VIDA');
+        mostrarAviso('hud-aviso-cerca', '+1 VIDA');
         actualizarHUD();
         red.enviarImpactoObstaculo({ id: obj.idObstaculo, tipo: 'pocion', x: obj.position.x, z: obj.position.z });
         red.enviarPoder({ tipo: 'pocion' });
@@ -1879,7 +1879,7 @@ function procesarColisiones() {
         jugador.escudoTimer = 6.0;
         audio.playItem();
         particulas.emitir(localPos, 0x00e5ff, 30);
-        mostrarAviso('hud-aviso-parry', '🛡️ ESCUDO ACTIVO (6s)');
+        mostrarAviso('hud-aviso-parry', 'ESCUDO ACTIVO (6s)');
         actualizarHUD();
         red.enviarImpactoObstaculo({ id: obj.idObstaculo, tipo: 'escudo', x: obj.position.x, z: obj.position.z });
         red.enviarPoder({ tipo: 'escudo', duracion: 6.0 });
@@ -1890,7 +1890,7 @@ function procesarColisiones() {
         puntos += 200;
         audio.playItem();
         particulas.emitir(localPos, 0xffd54f, 35);
-        mostrarAviso('hud-aviso-parry', '📜 PERGAMINO +200');
+        mostrarAviso('hud-aviso-parry', 'PERGAMINO +200');
         actualizarHUD();
         red.enviarImpactoObstaculo({ id: obj.idObstaculo, tipo: 'pergamino', x: obj.position.x, z: obj.position.z });
         continue;
@@ -1901,7 +1901,7 @@ function procesarColisiones() {
           puntos += 300;
           audio.playParry();
           particulas.emitir(localPos, 0xffd700, 50);
-          mostrarAviso('hud-aviso-parry', '⚔️ ¡PARRY A LA IA PERFECTO! +300', 1400);
+          mostrarAviso('hud-aviso-parry', '¡PARRY A LA IA PERFECTO! +300', 1400);
           red.enviarImpactoObstaculo({ id: obj.idObstaculo, tipo: 'parry_ia', x: obj.position.x, z: obj.position.z });
         } else {
           // El shuriken IA se DEBÍA parrear sí o sí: rompe el escudo si lo tenía, o quita vida
@@ -1911,14 +1911,14 @@ function procesarColisiones() {
             audio.playGolpe();
             particulas.emitir(localPos, 0xff1744, 35);
             flashImpacto();
-            mostrarAviso('hud-aviso-cerca', '💥 ¡LA IA ROMPIÓ TU ESCUDO! ¡DEBÍAS PARREAR!', 1800);
+            mostrarAviso('hud-aviso-cerca', '¡DEBÍAS PARREAR!', 1800);
           } else {
             vidas--;
             audio.playGolpe();
             particulas.emitir(localPos, 0xff1744, 45);
             flashImpacto();
             actualizarHUD();
-            mostrarAviso('hud-aviso-cerca', '❌ ¡FALLASTE EL PARRY A LA IA!', 1800);
+            mostrarAviso('hud-aviso-cerca', '¡FALLASTE EL PARRY A LA IA!', 1800);
           }
           red.enviarImpactoObstaculo({ id: obj.idObstaculo, tipo: 'golpe_ia', x: obj.position.x, z: obj.position.z });
           if (vidas <= 0) {
@@ -1928,7 +1928,7 @@ function procesarColisiones() {
 
             const hayCompaneroVivo = Object.values(otrosJugadores).some(p => !p.estaMuerto);
             if (hayCompaneroVivo) {
-              mostrarAviso('hud-aviso-cerca', '💀 ¡HAS CAÍDO! Modo Espectador — Apoyando a tu compañero...', 4000);
+              mostrarAviso('hud-aviso-cerca', '¡HAS CAÍDO! Modo Espectador — Apoyando a tu compañero...', 4000);
               const elEsp = document.getElementById('hud-espectador');
               if (elEsp) elEsp.style.display = 'block';
             } else {
@@ -1946,12 +1946,12 @@ function procesarColisiones() {
           puntos += 150;
           audio.playParry();
           particulas.emitir(localPos, 0x64b5f6, 30);
-          mostrarAviso('hud-aviso-parry', '⚔️ PARRY KATANA +150');
+          mostrarAviso('hud-aviso-parry', 'PARRY KATANA +150');
           red.enviarImpactoObstaculo({ id: obj.idObstaculo, tipo: 'parry', x: obj.position.x, z: obj.position.z });
         } else if (conEscudo) {
           audio.playParry();
           particulas.emitir(localPos, 0x00e5ff, 20);
-          mostrarAviso('hud-aviso-cerca', '🛡️ ¡ESCUDO ABSORBIÓ!');
+          mostrarAviso('hud-aviso-cerca', '¡ESCUDO ABSORBIÓ!');
           red.enviarImpactoObstaculo({ id: obj.idObstaculo, tipo: 'escudo_bloqueo', x: obj.position.x, z: obj.position.z });
         } else {
           vidas--;
@@ -1967,7 +1967,7 @@ function procesarColisiones() {
 
             const hayCompaneroVivo = Object.values(otrosJugadores).some(p => !p.estaMuerto);
             if (hayCompaneroVivo) {
-              mostrarAviso('hud-aviso-cerca', '💀 ¡HAS CAÍDO! Modo Espectador — Apoyando a tu compañero...', 4000);
+              mostrarAviso('hud-aviso-cerca', '¡HAS CAÍDO! Modo Espectador — Apoyando a tu compañero...', 4000);
               const elEsp = document.getElementById('hud-espectador');
               if (elEsp) elEsp.style.display = 'block';
             } else {
@@ -2370,7 +2370,7 @@ const btnSonido = document.getElementById('btn-sonido-toggle');
 if (btnSonido) {
   btnSonido.onclick = () => {
     const sonando = audio.alternarBGM();
-    btnSonido.textContent = sonando ? '🔊 MÚSICA' : '🔇 MÚSICA';
+    btnSonido.textContent = sonando ? 'MÚSICA: ON' : 'MÚSICA: OFF';
   };
 }
 
