@@ -1,0 +1,1373 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ejemplo Three.js - Juego 3D Multijugador y OBJLoader</title>
+  <link rel="icon" href="data:,">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Shojumaru&display=swap" rel="stylesheet">
+  <style>
+    @font-face {
+      font-family: 'Shojumaru';
+      src: url('/shojumaru.ttf') format('truetype');
+      font-weight: normal;
+      font-style: normal;
+      font-display: swap;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+    body {
+      background-color: #121212;
+      color: #ffffff;
+      font-family: 'Shojumaru', 'Cinzel', 'Trajan Pro', 'Georgia', serif;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      letter-spacing: 0.5px;
+    }
+    #canvas-container {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+    }
+    .caja-menu {
+      background: #181512;
+      border: 2px solid #5a422d;
+      border-radius: 4px;
+      padding: 24px 30px;
+      width: 90%;
+      max-width: 420px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.85), inset 0 0 15px rgba(90, 66, 45, 0.2);
+    }
+    .btn {
+      font-family: inherit;
+      background: #232a32;
+      border: 1px solid #4a5d70;
+      border-radius: 4px;
+      padding: 10px 16px;
+      color: #eae0d5;
+      font-size: 15px;
+      font-weight: normal;
+      letter-spacing: 1px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .btn:hover {
+      background: #313d4b;
+      border-color: #6a88a8;
+    }
+    .btn-verde {
+      background: #1e3a24;
+      border-color: #3e734a;
+      font-size: 16px;
+      padding: 12px;
+      color: #d8f3dc;
+    }
+    .btn-verde:hover {
+      background: #2d5736;
+      border-color: #529b63;
+    }
+    .btn-rojo {
+      background: #4a1515;
+      border-color: #8c2a2a;
+      color: #ffcccc;
+    }
+    .btn-rojo:hover {
+      background: #661f1f;
+      border-color: #b33939;
+    }
+    .input-texto {
+      font-family: inherit;
+      background: #1f1b17;
+      border: 1px solid #5a4632;
+      border-radius: 4px;
+      padding: 8px 12px;
+      color: #eae0d5;
+      font-size: 14px;
+      width: 100%;
+      outline: none;
+    }
+    #menu-inicio {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(10, 10, 10, 0.85);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #menu-pausa {
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.75);
+      z-index: 110;
+      align-items: center;
+      justify-content: center;
+    }
+    #modal-opciones {
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 120;
+      align-items: center;
+      justify-content: center;
+    }
+    .fila-opcion {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+      text-align: left;
+    }
+    select {
+      background: #2a2a2a;
+      border: 1px solid #555;
+      color: #fff;
+      padding: 6px;
+      border-radius: 4px;
+    }
+    #pantalla-carga {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #111;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      font-size: 18px;
+      gap: 12px;
+    }
+    #hud-juego {
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 50;
+      padding: 18px 24px;
+    }
+    .hud-simple-barra {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+    }
+    .hud-vidas-box {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid #444;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: bold;
+      letter-spacing: 1px;
+    }
+    .vida-barra {
+      display: inline-block;
+      width: 16px;
+      height: 10px;
+      background: #ff3344;
+      border-radius: 2px;
+      box-shadow: 0 0 4px rgba(255, 51, 68, 0.6);
+      transition: background 0.2s, opacity 0.2s;
+    }
+    .vida-barra.perdida {
+      background: #444444;
+      box-shadow: none;
+      opacity: 0.35;
+    }
+    .hud-puntaje-simple {
+      background: rgba(18, 14, 10, 0.75);
+      border: 1px solid #6b4d32;
+      border-radius: 4px;
+      padding: 6px 16px;
+      font-size: 16px;
+      font-weight: normal;
+      color: #eae0d5;
+      font-family: inherit;
+      letter-spacing: 1px;
+    }
+    .hud-timer-box {
+      background: rgba(18, 14, 10, 0.85);
+      border: 1px solid #b37428;
+      border-radius: 4px;
+      padding: 6px 16px;
+      font-size: 16px;
+      font-weight: normal;
+      color: #ffb74d;
+      font-family: inherit;
+      letter-spacing: 1px;
+    }
+    .hud-sala-tag {
+      background: rgba(33, 150, 243, 0.2);
+      border: 1px solid #2196f3;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      color: #90caf9;
+      font-weight: bold;
+      letter-spacing: 1px;
+    }
+    #hud-aviso-cerca {
+      position: absolute;
+      top: 36%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.9);
+      color: #ffb74d;
+      font-size: 14px;
+      font-weight: bold;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9), 0 0 6px rgba(255, 183, 77, 0.5);
+      pointer-events: none;
+      opacity: 0;
+      transition: transform 0.15s ease-out, opacity 0.15s ease;
+    }
+    #hud-aviso-cerca.mostrar {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1.1);
+    }
+    #hud-aviso-parry {
+      position: absolute;
+      top: 32%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.9);
+      color: #00e5ff;
+      font-size: 15px;
+      font-weight: bold;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9), 0 0 8px rgba(0, 229, 255, 0.7);
+      pointer-events: none;
+      opacity: 0;
+      transition: transform 0.15s cubic-bezier(0.18, 0.89, 0.32, 1.28), opacity 0.15s ease;
+    }
+    #hud-aviso-parry.mostrar {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1.15);
+    }
+    #pantalla-gameover {
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.85);
+      z-index: 150;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    #impacto-rojo {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(255, 0, 0, 0.35);
+      pointer-events: none;
+      opacity: 0;
+      z-index: 45;
+      transition: opacity 0.1s ease;
+    }
+    #impacto-rojo.activo {
+      opacity: 1;
+    }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "/node_modules/three/build/three.module.js",
+      "three/addons/": "/node_modules/three/examples/jsm/"
+    }
+  }
+  </script>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <div id="pantalla-carga">
+    <div>Cargando...</div>
+  </div>
+  <div id="impacto-rojo"></div>
+  <div id="hud-juego">
+    <div class="hud-simple-barra">
+      <div class="hud-vidas-box">
+        <span style="color: #aaa; margin-right: 4px;">VIDAS:</span>
+        <span class="vida-barra" id="vida-1"></span>
+        <span class="vida-barra" id="vida-2"></span>
+        <span class="vida-barra" id="vida-3"></span>
+      </div>
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <div class="hud-sala-tag" id="hud-sala-tag">SALA: GLOBAL</div>
+        <div class="hud-timer-box" id="hud-tiempo">TIEMPO 01:00</div>
+      </div>
+      <div class="hud-puntaje-simple">
+        PUNTOS: <span id="hud-puntos">0</span>
+      </div>
+    </div>
+    <div id="hud-aviso-cerca">CERCA +50</div>
+    <div id="hud-aviso-parry">PARRY +150</div>
+  </div>
+  <div id="modal-unirse-sala" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); z-index: 130; align-items: center; justify-content: center;">
+    <div class="caja-menu" style="max-width: 360px;">
+      <h3 style="color: #64b5f6;">Unirse a Sala</h3>
+      <p style="font-size: 13px; color: #ccc;">Ingresa el código de 4 caracteres de la sala:</p>
+      <input type="text" id="input-codigo-sala" class="input-texto" placeholder="Ej: ABCD" maxlength="6" style="text-transform: uppercase; font-size: 20px; text-align: center; letter-spacing: 4px; font-weight: bold;">
+      <div id="error-unirse-sala" style="color: #ff5252; font-size: 12px; display: none;"></div>
+      <button id="btn-confirmar-unirse" class="btn btn-verde">Entrar a la Sala</button>
+      <button id="btn-cancelar-unirse" class="btn btn-rojo">Cancelar</button>
+    </div>
+  </div>
+  <div id="pantalla-gameover">
+    <div class="caja-menu" style="max-width: 380px;">
+      <h2 id="gameover-titulo" style="color: #e53935; font-size: 26px;">¡GAME OVER!</h2>
+      <p id="gameover-subtitulo" style="color: #ccc; font-size: 15px;">Te has quedado sin vidas.</p>
+      <div style="background: #2a2a2a; border-radius: 6px; padding: 12px; margin: 10px 0;">
+        <div style="color: #aaa; font-size: 13px;">PUNTAJE FINAL</div>
+        <div id="gameover-puntos" style="font-size: 28px; font-weight: bold; color: #ffb74d;">0</div>
+        <div id="gameover-stats" style="font-size: 12px; color: #bbb; margin-top: 4px;">0 esquivados</div>
+      </div>
+      <div id="gameover-ranking" style="text-align: left; font-size: 13px; color: #eee; margin-bottom: 10px; display: none;"></div>
+      <button id="btn-reintentar" class="btn btn-verde">Jugar de Nuevo</button>
+      <button id="btn-gameover-salir" class="btn btn-rojo">Salir al Menú</button>
+    </div>
+  </div>
+  <div id="pantalla-lobby" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(10, 14, 20, 0.92); z-index: 105; align-items: center; justify-content: center;">
+    <div class="caja-menu" style="max-width: 440px; border-color: #2196f3;">
+      <h2 style="color: #64b5f6; font-size: 24px;">Lobby de Espera</h2>
+      <div style="background: rgba(33, 150, 243, 0.15); border: 1px dashed #2196f3; border-radius: 8px; padding: 12px; margin: 4px 0;">
+        <div style="font-size: 12px; color: #aaa; text-transform: uppercase; letter-spacing: 1px;">CÓDIGO DE SALA</div>
+        <div id="lobby-codigo-sala" style="font-size: 32px; font-weight: 900; color: #ffb74d; letter-spacing: 6px; font-family: monospace;">----</div>
+        <div style="font-size: 11px; color: #90caf9; margin-top: 2px;">Comparte este código para que tus amigos se unan</div>
+      </div>
+
+      <div style="text-align: left; margin: 6px 0;">
+        <div style="display: flex; justify-content: space-between; font-size: 13px; color: #bbb; border-bottom: 1px solid #444; padding-bottom: 4px;">
+          <span>Jugadores Conectados:</span>
+          <span id="lobby-contador-jugadores">1</span>
+        </div>
+        <div id="lobby-lista-jugadores" style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px; max-height: 160px; overflow-y: auto;">
+          <!-- Items de jugadores -->
+        </div>
+      </div>
+
+      <div id="lobby-aviso-espera" style="font-size: 13px; color: #ffb74d; display: none;">
+        Esperando a que el anfitrión inicie la partida...
+      </div>
+
+      <button id="btn-iniciar-partida-lobby" class="btn btn-verde" style="display: none; font-size: 16px; padding: 12px;">¡Iniciar Partida!</button>
+      <button id="btn-salir-lobby" class="btn btn-rojo">Salir al Menú</button>
+    </div>
+  </div>
+  <div id="menu-inicio">
+    <div class="caja-menu">
+      <h2 style="color: #64b5f6; font-size: 22px;">Dojo Ninja 3D</h2>
+      <div style="text-align: left; margin-top: 4px;">
+        <label style="font-size: 12px; color: #bbb;">Nombre:</label>
+        <input type="text" id="input-nombre" class="input-texto" value="" placeholder="Tu apodo" maxlength="14">
+      </div>
+      <button id="btn-comenzar" class="btn btn-verde">Comenzar</button>
+      <button id="btn-crear-sala" class="btn">Crear Sala</button>
+      <button id="btn-unirse-sala" class="btn">Unirse a Sala</button>
+      <button id="btn-puntuaciones" class="btn">Puntuaciones</button>
+      <button id="btn-opciones" class="btn" style="background: #37474f;">Opciones</button>
+    </div>
+  </div>
+  <div id="modal-puntuaciones" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); z-index: 120; align-items: center; justify-content: center;">
+    <div class="caja-menu" style="max-width: 380px;">
+      <h3>Puntuaciones</h3>
+      <div style="text-align: left; font-size: 14px; color: #ddd; display: flex; flex-direction: column; gap: 8px; margin: 10px 0;">
+        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #444; padding-bottom: 4px; color: #888; font-size: 12px;">
+          <span>Posicion / Jugador</span>
+          <span>Puntuacion</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span>1. MaestroNinja67</span>
+          <span style="color: #64b5f6;">1250 pts</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span>2. NinjaGaidenFan</span>
+          <span style="color: #64b5f6;">840 pts</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span>3. MundialFifa2026</span>
+          <span style="color: #64b5f6;">620 pts</span>
+        </div>
+      </div>
+      <button id="btn-cerrar-puntuaciones" class="btn btn-verde" style="margin-top: 10px;">Volver</button>
+    </div>
+  </div>
+  <div id="menu-pausa">
+    <div class="caja-menu" style="max-width: 340px;">
+      <h3 style="color: #ffb74d;">Pausa</h3>
+      <button id="btn-reanudar" class="btn btn-verde" style="margin-top: 8px;">Reanudar</button>
+      <button id="btn-pausa-opciones" class="btn">Opciones</button>
+      <button id="btn-pausa-salir" class="btn btn-rojo">Salir al Menú</button>
+    </div>
+  </div>
+  <div id="modal-opciones">
+    <div class="caja-menu" style="max-width: 380px;">
+      <h3>Opciones</h3>
+      <div class="fila-opcion">
+        <span>Sombras:</span>
+        <select id="sel-sombras">
+          <option value="none">Desactivadas</option>
+          <option value="medium" selected>Activadas</option>
+        </select>
+      </div>
+      <div class="fila-opcion">
+        <span>Resolución:</span>
+        <select id="sel-resolucion">
+          <option value="1.0" selected>1.0x</option>
+          <option value="native">Nativa</option>
+        </select>
+      </div>
+      <div class="fila-opcion">
+        <span>Cámara:</span>
+        <select id="sel-camara">
+          <option value="runner" selected>Tercera Persona</option>
+          <option value="orbit">Libre</option>
+        </select>
+      </div>
+      <button id="btn-cerrar-opciones" class="btn btn-verde" style="margin-top: 10px;">Volver</button>
+    </div>
+  </div>
+  <div id="canvas-container"></div>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+    import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x141820);
+    scene.fog = new THREE.FogExp2(0x141820, 0.015);
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
+    camera.position.set(0, 4.5, 9);
+    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(1.0); 
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
+    container.appendChild(renderer.domElement);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.enabled = false;
+    const luzAmbiente = new THREE.AmbientLight(0xffffff, 1.2);
+    scene.add(luzAmbiente);
+    const luzDireccional = new THREE.DirectionalLight(0xffffff, 1.8);
+    luzDireccional.position.set(10, 30, -10);
+    luzDireccional.castShadow = true;
+    luzDireccional.shadow.mapSize.width = 1024;
+    luzDireccional.shadow.mapSize.height = 1024;
+    scene.add(luzDireccional);
+    const textureLoader = new THREE.TextureLoader();
+    const texturaSuelo = textureLoader.load('/models/ninja/textures/dojo_floor.png');
+    texturaSuelo.wrapS = THREE.RepeatWrapping;
+    texturaSuelo.wrapT = THREE.RepeatWrapping;
+    texturaSuelo.repeat.set(6, 40);
+    const largoPista = 140;
+    const anchoPista = 10;
+    const sueloGeo = new THREE.PlaneGeometry(anchoPista, largoPista);
+    const sueloMat = new THREE.MeshStandardMaterial({ map: texturaSuelo, roughness: 0.8 });
+    const suelo = new THREE.Mesh(sueloGeo, sueloMat);
+    suelo.rotation.x = -Math.PI / 2;
+    suelo.position.set(0, 0, -35);
+    suelo.receiveShadow = true;
+    scene.add(suelo);
+    const muroMat = new THREE.MeshStandardMaterial({ color: 0x2c3440 });
+    const muroGeo = new THREE.BoxGeometry(0.6, 1.2, largoPista);
+    const muroIzq = new THREE.Mesh(muroGeo, muroMat);
+    muroIzq.position.set(-anchoPista / 2, 0.6, -35);
+    scene.add(muroIzq);
+    const muroDer = new THREE.Mesh(muroGeo, muroMat);
+    muroDer.position.set(anchoPista / 2, 0.6, -35);
+    scene.add(muroDer);
+
+    const texTraje = textureLoader.load('/models/ninja/textures/ninja_suit.png');
+    const texAcento = textureLoader.load('/models/ninja/textures/ninja_accent.png');
+    const texMetal = textureLoader.load('/models/shuriken/textures/shuriken_metal.png');
+    let plantillaNinja = null;
+    let plantillaShuriken = null;
+
+    function crearModeloKatana() {
+      const grupoKatana = new THREE.Group();
+      
+      // Hoja brillante plateada
+      const hojaGeo = new THREE.BoxGeometry(0.04, 1.1, 0.08);
+      const hojaMat = new THREE.MeshStandardMaterial({
+        color: 0xeeeeee,
+        metalness: 0.95,
+        roughness: 0.15,
+        emissive: 0x224466,
+        emissiveIntensity: 0.2
+      });
+      const hoja = new THREE.Mesh(hojaGeo, hojaMat);
+      hoja.position.y = 0.55;
+      grupoKatana.add(hoja);
+
+      // Tsuba (guarda dorada)
+      const tsubaGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.03, 12);
+      const tsubaMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.8, roughness: 0.3 });
+      const tsuba = new THREE.Mesh(tsubaGeo, tsubaMat);
+      tsuba.position.y = 0.015;
+      grupoKatana.add(tsuba);
+
+      // Mango / Tsuka (negro / rojo)
+      const tsukaGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.32, 8);
+      const tsukaMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.9 });
+      const tsuka = new THREE.Mesh(tsukaGeo, tsukaMat);
+      tsuka.position.y = -0.16;
+      grupoKatana.add(tsuka);
+
+      return grupoKatana;
+    }
+    function cargarNinja() {
+      return new Promise((resolve, reject) => {
+        const mtlLoader = new MTLLoader();
+        mtlLoader.setPath('/models/ninja/');
+        mtlLoader.load('ninja_walk.mtl', (materials) => {
+          materials.preload();
+          const objLoader = new OBJLoader();
+          objLoader.setMaterials(materials);
+          objLoader.setPath('/models/ninja/');
+          objLoader.load('ninja.obj', (obj) => {
+            const box = new THREE.Box3().setFromObject(obj);
+            obj.position.set(-box.getCenter(new THREE.Vector3()).x, -box.min.y, -box.getCenter(new THREE.Vector3()).z);
+            const grupo = new THREE.Group();
+            grupo.add(obj);
+            obj.traverse((child) => {
+              if (child.isMesh && child.material) {
+                child.castShadow = true;
+                const m = Array.isArray(child.material) ? child.material[0] : child.material;
+                if (m) {
+                  m.map = texTraje;
+                  m.needsUpdate = true;
+                }
+              }
+            });
+            plantillaNinja = grupo;
+            resolve(grupo);
+          }, undefined, reject);
+        }, undefined, reject);
+      });
+    }
+    function cargarShuriken() {
+      return new Promise((resolve, reject) => {
+        const mtlLoader = new MTLLoader();
+        mtlLoader.setPath('/models/shuriken/');
+        mtlLoader.load('shuriken.mtl', (materials) => {
+          materials.preload();
+          const objLoader = new OBJLoader();
+          objLoader.setMaterials(materials);
+          objLoader.setPath('/models/shuriken/');
+          objLoader.load('shuriken.obj', (shuriken) => {
+            const box = new THREE.Box3().setFromObject(shuriken);
+            shuriken.position.sub(box.getCenter(new THREE.Vector3()));
+            const grupo = new THREE.Group();
+            grupo.add(shuriken);
+            // Escala con mayor grosor en el eje Z (de 1.2 a 2.4 en Z)
+            grupo.scale.set(1.2, 1.2, 2.4);
+            shuriken.traverse((child) => {
+              if (child.isMesh && child.material) {
+                child.castShadow = true;
+                const m = Array.isArray(child.material) ? child.material[0] : child.material;
+                if (m) {
+                  m.map = texMetal;
+                  m.metalness = 0.9;
+                  m.roughness = 0.3;
+                  m.needsUpdate = true;
+                }
+              }
+            });
+            plantillaShuriken = grupo;
+            resolve(grupo);
+          }, undefined, reject);
+        }, undefined, reject);
+      });
+    }
+    class PoolShurikens {
+      constructor(cantidad = 40) {
+        this.lista = [];
+        this.cantidad = cantidad;
+      }
+      iniciar() {
+        if (!plantillaShuriken) return;
+        for (let i = 0; i < this.cantidad; i++) {
+          const mesh = plantillaShuriken.clone(true);
+          mesh.visible = false;
+          scene.add(mesh);
+          this.lista.push({ mesh, activo: false, vel: 18, rot: 25, esquivado: false, procesado: false, minXDist: 999 });
+        }
+      }
+      activar(datos) {
+        let item = this.lista.find(s => !s.activo);
+        if (!item && plantillaShuriken) {
+          // Si el pool se agotó dinámicamente, instanciar un nuevo shuriken
+          const mesh = plantillaShuriken.clone(true);
+          mesh.visible = false;
+          scene.add(mesh);
+          item = { mesh, activo: false, vel: 18, rot: 25, esquivado: false, procesado: false, minXDist: 999 };
+          this.lista.push(item);
+        }
+        if (item) {
+          item.activo = true;
+          item.esquivado = false;
+          item.procesado = false;
+          item.minXDist = 999;
+          item.mesh.visible = true;
+          item.mesh.position.set(datos.x, datos.y, datos.z);
+          item.vel = datos.velocidad || 36;
+          item.mesh.rotation.set(Math.PI / 2, 0, 0);
+        }
+      }
+      limpiar() {
+        this.lista.forEach(s => { s.activo = false; s.mesh.visible = false; });
+      }
+      actualizar(delta, localPos, parryActivo, onDodge, onHit, onParry) {
+        this.lista.forEach(s => {
+          if (!s.activo) return;
+          s.mesh.position.z += s.vel * delta;
+          s.mesh.rotation.z += s.rot * delta;
+
+          // Mecánica de PARRY con Katana:
+          // Requiere timing preciso: el shuriken debe estar justo frente a la hoja
+          if (localPos && !s.procesado && parryActivo) {
+            const dx = Math.abs(s.mesh.position.x - localPos.x);
+            const dz = s.mesh.position.z - localPos.z; // Ventana estricta: z entre -1.8 y 0.2
+            if (dx < 1.15 && dz >= -1.8 && dz <= 0.2) {
+              s.procesado = true;
+              s.activo = false;
+              s.mesh.visible = false;
+              if (onParry) onParry(s.mesh.position);
+              return;
+            }
+          }
+
+          // Hitbox: comprobación de colisión de daño con el jugador local
+          if (localPos && !s.procesado) {
+            const dx = Math.abs(s.mesh.position.x - localPos.x);
+            const dy = Math.abs(s.mesh.position.y - localPos.y);
+            const dz = Math.abs(s.mesh.position.z - localPos.z);
+
+            // Shuriken hitbox: caja de colisión ajustada
+            if (dx < 1.1 && dy < 1.4 && dz < 0.7) {
+              s.procesado = true;
+              s.activo = false;
+              s.mesh.visible = false;
+              if (onHit) onHit();
+              return;
+            }
+          }
+
+          // Medir la distancia mínima en X cuando el shuriken pasa a la altura del jugador en Z
+          if (localPos && Math.abs(s.mesh.position.z - localPos.z) < 1.6) {
+            const xDist = Math.abs(s.mesh.position.x - localPos.x);
+            if (xDist < s.minXDist) {
+              s.minXDist = xDist;
+            }
+          }
+
+          if (!s.procesado && s.mesh.position.z > (localPos ? localPos.z + 0.6 : 1.5)) {
+            s.procesado = true;
+            s.esquivado = true;
+            const esCerca = s.minXDist <= 1.8;
+            if (onDodge) onDodge({ esCerca, distanciaX: s.minXDist });
+          }
+          if (s.mesh.position.z > 25) {
+            s.activo = false;
+            s.mesh.visible = false;
+          }
+        });
+      }
+    }
+    const pool = new PoolShurikens(40);
+    class JugadorNinja {
+      constructor(datos, esLocal = false) {
+        this.id = datos.id;
+        this.nombre = datos.nombre || 'Ninja';
+        this.esLocal = esLocal;
+        this.color = datos.color || { hex: 0x2980b9, ropa: 0x153b54, cinta: 0xffffff };
+        this.root = new THREE.Group();
+        this.root.position.set(datos.x || 0, datos.y || 0, datos.z || 0);
+        this.root.rotation.y = Math.PI;
+        if (plantillaNinja) {
+          this.modelo = plantillaNinja.clone(true);
+          this.pintarColor();
+          this.root.add(this.modelo);
+        }
+
+        // Katana para la animación de parry
+        this.katana = crearModeloKatana();
+        this.katana.position.set(0.4, 0.9, 0.4);
+        this.katana.rotation.set(-0.3, 0, -0.4);
+        this.root.add(this.katana);
+
+        this.root.add(this.crearEtiqueta(this.esLocal ? `${this.nombre} (Tú)` : this.nombre));
+        this.saltoTimer = 0;
+        this.enSalto = false;
+        this.walkTimer = 0;
+        this.targetPos = new THREE.Vector3(datos.x || 0, datos.y || 0, datos.z || 0);
+        this.parryTimer = 0; // Temporizador para la animación del corte
+        scene.add(this.root);
+      }
+      crearEtiqueta(texto) {
+        const c = document.createElement('canvas');
+        c.width = 256; c.height = 64;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = 'rgba(0,0,0,0.8)';
+        ctx.fillRect(10, 10, 236, 44);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 22px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(texto, 128, 32);
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false }));
+        sprite.scale.set(2, 0.5, 1);
+        sprite.position.y = 2.4;
+        return sprite;
+      }
+      pintarColor() {
+        if (!this.modelo) return;
+        this.modelo.traverse((child) => {
+          if (child.isMesh && child.material) {
+            if (Array.isArray(child.material)) {
+              child.material = child.material.map((m) => {
+                const matClon = m.clone();
+                if (matClon && matClon.color) {
+                  matClon.color.setHex(this.color.ropa || 0x222225);
+                }
+                return matClon;
+              });
+            } else {
+              child.material = child.material.clone();
+              if (child.material && child.material.color) {
+                child.material.color.setHex(this.color.ropa || 0x222225);
+              }
+            }
+          }
+        });
+      }
+      saltar() {
+        if (!this.enSalto) {
+          this.enSalto = true;
+          this.saltoTimer = 0;
+        }
+      }
+      ejecutarParry() {
+        this.parryTimer = 0.28; // Duración de la animación del corte
+      }
+      actualizar(delta) {
+        if (!this.modelo) return;
+        if (this.enSalto) {
+          this.saltoTimer += delta * 3.8;
+          const alt = Math.sin(this.saltoTimer * Math.PI) * 2.8;
+          this.modelo.position.y = Math.max(0, alt);
+          if (this.saltoTimer >= 1.0) {
+            this.enSalto = false;
+            this.modelo.position.y = 0;
+          }
+        } else {
+          this.walkTimer += delta * 12;
+          this.modelo.position.y = Math.abs(Math.sin(this.walkTimer)) * 0.16;
+        }
+
+        // Animación de la katana durante el parry
+        if (this.parryTimer > 0) {
+          this.parryTimer -= delta;
+          const progreso = 1 - Math.max(0, this.parryTimer / 0.28);
+          // Golpe rápido de katana en arco horizontal/diagonal frontal
+          const anguloSlash = Math.sin(progreso * Math.PI) * 2.2;
+          this.katana.position.set(0.2 - progreso * 0.8, 1.0, 0.6);
+          this.katana.rotation.set(0.6, 0.4, -0.6 - anguloSlash);
+        } else {
+          // Reposo en la cintura / espalda
+          this.katana.position.set(0.35, 0.85 + (this.modelo.position.y * 0.2), 0.2);
+          this.katana.rotation.set(-0.35, 0, -0.35);
+        }
+
+        if (!this.esLocal) {
+          this.root.position.lerp(this.targetPos, 0.2);
+        }
+      }
+      destruir() {
+        scene.remove(this.root);
+      }
+    }
+    let socket = null;
+    let localPlayer = null;
+    const remotePlayers = new Map();
+    let juegoActivo = false;
+    let juegoPausado = false;
+    let recursosListos = false;
+    let pendienteEntrar = null;
+    let distancia = 0;
+    let esquivados = 0;
+    let esquivesCercanos = 0;
+    let puntos = 0;
+    let vidas = 3;
+    let tiempoRestante = 60;
+    let codigoSalaActual = 'GLOBAL';
+    let invulnerableTimer = 0;
+    let avisoCercaTimeout = null;
+
+    const pantallaLobby = document.getElementById('pantalla-lobby');
+    const lobbyCodigoSala = document.getElementById('lobby-codigo-sala');
+    const lobbyContadorJugadores = document.getElementById('lobby-contador-jugadores');
+    const lobbyListaJugadores = document.getElementById('lobby-lista-jugadores');
+    const lobbyAvisoEspera = document.getElementById('lobby-aviso-espera');
+    const btnIniciarPartidaLobby = document.getElementById('btn-iniciar-partida-lobby');
+    const btnSalirLobby = document.getElementById('btn-salir-lobby');
+
+    const hudElement = document.getElementById('hud-juego');
+    const hudPuntos = document.getElementById('hud-puntos');
+    const hudTiempo = document.getElementById('hud-tiempo');
+    const hudSalaTag = document.getElementById('hud-sala-tag');
+    const hudAvisoCerca = document.getElementById('hud-aviso-cerca');
+    const hudAvisoParry = document.getElementById('hud-aviso-parry');
+    const pantallaGameOver = document.getElementById('pantalla-gameover');
+    const gameoverTitulo = document.getElementById('gameover-titulo');
+    const gameoverSubtitulo = document.getElementById('gameover-subtitulo');
+    const gameoverPuntos = document.getElementById('gameover-puntos');
+    const gameoverStats = document.getElementById('gameover-stats');
+    const gameoverRanking = document.getElementById('gameover-ranking');
+    const impactoRojo = document.getElementById('impacto-rojo');
+    let avisoParryTimeout = null;
+
+    function renderizarLobby(datos) {
+      if (!pantallaLobby) return;
+      document.getElementById('menu-inicio').style.display = 'none';
+      document.getElementById('modal-unirse-sala').style.display = 'none';
+      if (pantallaGameOver) pantallaGameOver.style.display = 'none';
+      if (hudElement) hudElement.style.display = 'none';
+      pantallaLobby.style.display = 'flex';
+
+      codigoSalaActual = datos.codigoSala;
+      if (lobbyCodigoSala) lobbyCodigoSala.textContent = datos.codigoSala;
+
+      const jugadoresObj = datos.jugadores || {};
+      const listaIds = Object.keys(jugadoresObj);
+      if (lobbyContadorJugadores) lobbyContadorJugadores.textContent = `${listaIds.length} ninja(s)`;
+
+      if (lobbyListaJugadores) {
+        lobbyListaJugadores.innerHTML = '';
+        listaIds.forEach((id) => {
+          const j = jugadoresObj[id];
+          const esAnf = id === datos.anfitrionId;
+          const esYo = socket && id === socket.id;
+
+          const div = document.createElement('div');
+          div.style.cssText = 'background: #2a2a2a; border-radius: 6px; padding: 6px 12px; display: flex; justify-content: space-between; align-items: center; font-size: 14px;';
+          div.innerHTML = `
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#4caf50;"></span>
+              <span style="${esYo ? 'color:#64b5f6; font-weight:bold;' : 'color:#fff;'}">${j.nombre} ${esYo ? '(Tú)' : ''}</span>
+            </div>
+            ${esAnf ? '<span style="background:#ff9800; color:#000; font-size:10px; font-weight:bold; padding:2px 6px; border-radius:4px;">ANFITRIÓN</span>' : '<span style="color:#888; font-size:11px;">Listo</span>'}
+          `;
+          lobbyListaJugadores.appendChild(div);
+        });
+      }
+
+      const soyAnfitrion = socket && datos.anfitrionId === socket.id;
+      if (btnIniciarPartidaLobby) {
+        btnIniciarPartidaLobby.style.display = soyAnfitrion ? 'block' : 'none';
+      }
+      if (lobbyAvisoEspera) {
+        lobbyAvisoEspera.style.display = soyAnfitrion ? 'none' : 'block';
+      }
+    }
+
+    function mostrarAvisoParry() {
+      if (!hudAvisoParry) return;
+      hudAvisoParry.classList.add('mostrar');
+      if (avisoParryTimeout) clearTimeout(avisoParryTimeout);
+      avisoParryTimeout = setTimeout(() => {
+        hudAvisoParry.classList.remove('mostrar');
+      }, 700);
+    }
+
+    function formatearTiempo(segundos) {
+      const s = Math.max(0, Math.floor(segundos));
+      const min = Math.floor(s / 60);
+      const sec = s % 60;
+      return `TIEMPO ${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+    }
+
+    function actualizarHUD() {
+      if (!hudElement) return;
+      hudPuntos.textContent = puntos;
+      if (hudTiempo) hudTiempo.textContent = formatearTiempo(tiempoRestante);
+      if (hudSalaTag) hudSalaTag.textContent = `SALA: ${codigoSalaActual}`;
+      for (let i = 1; i <= 3; i++) {
+        const c = document.getElementById(`vida-${i}`);
+        if (c) {
+          if (i <= vidas) {
+            c.classList.remove('perdida');
+          } else {
+            c.classList.add('perdida');
+          }
+        }
+      }
+    }
+
+    function recibirDanio() {
+      if (invulnerableTimer > 0 || vidas <= 0 || !juegoActivo) return;
+      vidas--;
+      invulnerableTimer = 1.0; // 1 segundo de invulnerabilidad
+      actualizarHUD();
+
+      // Sincronizar stats al servidor
+      if (socket) {
+        socket.emit('playerStatsUpdate', { puntos, vidas });
+      }
+
+      // Flash rojo
+      if (impactoRojo) {
+        impactoRojo.classList.add('activo');
+        setTimeout(() => impactoRojo.classList.remove('activo'), 180);
+      }
+
+      if (vidas <= 0) {
+        finalizarJuego('vidas');
+      }
+    }
+
+    function finalizarJuego(motivo = 'vidas', rankingJugadores = null) {
+      juegoActivo = false;
+      if (hudElement) hudElement.style.display = 'none';
+      if (pantallaGameOver) {
+        pantallaGameOver.style.display = 'flex';
+        if (motivo === 'tiempo') {
+          if (gameoverTitulo) {
+            gameoverTitulo.textContent = '¡TIEMPO TERMINADO!';
+            gameoverTitulo.style.color = '#ff9800';
+          }
+          if (gameoverSubtitulo) gameoverSubtitulo.textContent = '¡Has completado el minuto en el Dojo!';
+        } else {
+          if (gameoverTitulo) {
+            gameoverTitulo.textContent = '¡GAME OVER!';
+            gameoverTitulo.style.color = '#e53935';
+          }
+          if (gameoverSubtitulo) gameoverSubtitulo.textContent = 'Te has quedado sin vidas.';
+        }
+
+        if (gameoverPuntos) gameoverPuntos.textContent = puntos;
+        if (gameoverStats) gameoverStats.textContent = `${esquivados} shurikens esquivados (${esquivesCercanos} cercanos)`;
+
+        if (gameoverRanking && rankingJugadores) {
+          gameoverRanking.style.display = 'block';
+          const arr = Object.values(rankingJugadores).sort((a, b) => (b.puntos || 0) - (a.puntos || 0));
+          let html = '<div style="font-weight:bold; margin-bottom:4px; color:#64b5f6;">Tabla de Posiciones:</div>';
+          arr.forEach((p, idx) => {
+            const esYo = localPlayer && p.id === localPlayer.id;
+            html += `<div style="display:flex; justify-content:space-between; padding:2px 0; ${esYo ? 'color:#ffb74d; font-weight:bold;' : ''}">
+              <span>${idx + 1}. ${p.nombre} ${esYo ? '(Tú)' : ''}</span>
+              <span>${p.puntos || 0} pts</span>
+            </div>`;
+          });
+          gameoverRanking.innerHTML = html;
+        } else if (gameoverRanking) {
+          gameoverRanking.style.display = 'none';
+        }
+      }
+    }
+
+    function mostrarAvisoCerca() {
+      if (!hudAvisoCerca) return;
+      hudAvisoCerca.classList.add('mostrar');
+      if (avisoCercaTimeout) clearTimeout(avisoCercaTimeout);
+      avisoCercaTimeout = setTimeout(() => {
+        hudAvisoCerca.classList.remove('mostrar');
+      }, 600);
+    }
+    function iniciarSocket() {
+      if (socket) return;
+      socket = io();
+      socket.on('connect', () => {
+        if (pendienteEntrar && recursosListos) {
+          entrarAlDojo(pendienteEntrar.tipo, pendienteEntrar.datosExtra);
+          pendienteEntrar = null;
+        }
+      });
+      socket.on('joinedLobby', (datos) => {
+        renderizarLobby({
+          codigoSala: datos.codigoSala,
+          anfitrionId: datos.anfitrionId,
+          jugadores: datos.todosJugadores
+        });
+      });
+      socket.on('lobbyUpdate', (datos) => {
+        renderizarLobby(datos);
+      });
+      socket.on('matchStarted', (datos) => {
+        if (pantallaLobby) pantallaLobby.style.display = 'none';
+      });
+      socket.on('gameStarted', (datos) => {
+        try {
+          limpiarJuego();
+          if (pantallaLobby) pantallaLobby.style.display = 'none';
+          codigoSalaActual = datos.codigoSala || 'GLOBAL';
+          tiempoRestante = datos.tiempoRestante !== undefined ? datos.tiempoRestante : 60;
+          localPlayer = new JugadorNinja(datos.jugadorLocal, true);
+          if (datos.todosJugadores) {
+            Object.keys(datos.todosJugadores).forEach((id) => {
+              if (id !== socket.id) {
+                remotePlayers.set(id, new JugadorNinja(datos.todosJugadores[id], false));
+              }
+            });
+          }
+          document.getElementById('menu-inicio').style.display = 'none';
+          document.getElementById('modal-unirse-sala').style.display = 'none';
+          if (pantallaGameOver) pantallaGameOver.style.display = 'none';
+          if (hudElement) hudElement.style.display = 'block';
+          juegoActivo = true;
+          juegoPausado = false;
+          distancia = 0;
+          esquivados = 0;
+          esquivesCercanos = 0;
+          puntos = 0;
+          vidas = 3;
+          invulnerableTimer = 0;
+          actualizarHUD();
+        } catch (err) {
+          console.error('[Error gameStarted]:', err);
+        }
+      });
+      socket.on('timeUpdate', (datos) => {
+        tiempoRestante = datos.tiempoRestante;
+        if (hudTiempo) hudTiempo.textContent = formatearTiempo(tiempoRestante);
+      });
+      socket.on('matchEnded', (datos) => {
+        finalizarJuego(datos.motivo || 'tiempo', datos.jugadores);
+      });
+      socket.on('roomError', (msg) => {
+        const errDiv = document.getElementById('error-unirse-sala');
+        if (errDiv) {
+          errDiv.textContent = msg;
+          errDiv.style.display = 'block';
+        } else {
+          alert(msg);
+        }
+      });
+      socket.on('newPlayer', (datos) => {
+        try {
+          if (datos.id !== socket.id && !remotePlayers.has(datos.id)) {
+            remotePlayers.set(datos.id, new JugadorNinja(datos, false));
+          }
+        } catch (err) {
+          console.error('[Error newPlayer]:', err);
+        }
+      });
+      socket.on('playerMoved', (datos) => {
+        const p = remotePlayers.get(datos.id);
+        if (p) p.targetPos.set(datos.x, datos.y, datos.z);
+      });
+      socket.on('playerActed', (datos) => {
+        const p = remotePlayers.get(datos.id);
+        if (p) {
+          if (datos.tipo === 'jump') p.saltar();
+          if (datos.tipo === 'parry') p.ejecutarParry();
+        }
+      });
+      socket.on('playerStatsChanged', (datos) => {
+        const p = remotePlayers.get(datos.id);
+        if (p) {
+          p.puntos = datos.puntos;
+          p.vidas = datos.vidas;
+        }
+      });
+      socket.on('spawnObstacle', (datos) => {
+        if (juegoActivo) pool.activar(datos);
+      });
+      socket.on('playerDisconnected', (id) => {
+        const p = remotePlayers.get(id);
+        if (p) {
+          p.destruir();
+          remotePlayers.delete(id);
+        }
+      });
+    }
+    function entrarAlDojo(tipoEvento = 'startGame', datosExtra = {}) {
+      const input = document.getElementById('input-nombre');
+      const nombre = (input ? input.value : '').trim() || 'Ninja';
+      if (!recursosListos) {
+        pendienteEntrar = { tipo: tipoEvento, datosExtra: datosExtra, nombre: nombre };
+        const btn = document.getElementById('btn-comenzar');
+        if (btn) btn.innerText = 'Cargando...';
+        return;
+      }
+      if (!socket) {
+        iniciarSocket();
+      }
+      socket.emit(tipoEvento, { userName: nombre, ...datosExtra });
+    }
+    function limpiarJuego() {
+      if (localPlayer) { localPlayer.destruir(); localPlayer = null; }
+      remotePlayers.forEach(p => p.destruir());
+      remotePlayers.clear();
+      pool.limpiar();
+    }
+    function volverAlMenu() {
+      if (socket) socket.emit('leaveGame');
+      juegoActivo = false;
+      juegoPausado = false;
+      limpiarJuego();
+      if (pantallaLobby) pantallaLobby.style.display = 'none';
+      if (hudElement) hudElement.style.display = 'none';
+      if (pantallaGameOver) pantallaGameOver.style.display = 'none';
+      document.getElementById('menu-pausa').style.display = 'none';
+      document.getElementById('menu-inicio').style.display = 'flex';
+      const btn = document.getElementById('btn-comenzar');
+      if (btn) btn.innerText = 'Comenzar';
+    }
+    const menuPausa = document.getElementById('menu-pausa');
+    const modalOpciones = document.getElementById('modal-opciones');
+    function alternarPausa() {
+      if (!juegoActivo) return;
+      juegoPausado = !juegoPausado;
+      menuPausa.style.display = juegoPausado ? 'flex' : 'none';
+    }
+    const modalUnirseSala = document.getElementById('modal-unirse-sala');
+    const inputCodigoSala = document.getElementById('input-codigo-sala');
+    const errorUnirseSala = document.getElementById('error-unirse-sala');
+
+    document.getElementById('btn-comenzar').addEventListener('click', () => entrarAlDojo('startGame'));
+    document.getElementById('btn-crear-sala').addEventListener('click', () => entrarAlDojo('createRoom'));
+    document.getElementById('btn-unirse-sala').addEventListener('click', () => {
+      if (errorUnirseSala) errorUnirseSala.style.display = 'none';
+      if (inputCodigoSala) inputCodigoSala.value = '';
+      if (modalUnirseSala) modalUnirseSala.style.display = 'flex';
+    });
+    document.getElementById('btn-cancelar-unirse').addEventListener('click', () => {
+      if (modalUnirseSala) modalUnirseSala.style.display = 'none';
+    });
+    document.getElementById('btn-confirmar-unirse').addEventListener('click', () => {
+      const cod = inputCodigoSala ? inputCodigoSala.value.trim().toUpperCase() : '';
+      if (!cod) {
+        if (errorUnirseSala) {
+          errorUnirseSala.textContent = 'Escribe el código de la sala.';
+          errorUnirseSala.style.display = 'block';
+        }
+        return;
+      }
+      entrarAlDojo('joinRoom', { roomCode: cod });
+    });
+
+    const modalPuntuaciones = document.getElementById('modal-puntuaciones');
+    document.getElementById('btn-puntuaciones').addEventListener('click', () => {
+      if (modalPuntuaciones) modalPuntuaciones.style.display = 'flex';
+    });
+    document.getElementById('btn-cerrar-puntuaciones').addEventListener('click', () => {
+      if (modalPuntuaciones) modalPuntuaciones.style.display = 'none';
+    });
+    document.getElementById('btn-opciones').addEventListener('click', () => {
+      modalOpciones.style.display = 'flex';
+    });
+    document.getElementById('btn-pausa-opciones').addEventListener('click', () => {
+      modalOpciones.style.display = 'flex';
+    });
+    document.getElementById('btn-cerrar-opciones').addEventListener('click', () => {
+      modalOpciones.style.display = 'none';
+    });
+    document.getElementById('btn-reanudar').addEventListener('click', alternarPausa);
+    document.getElementById('btn-pausa-salir').addEventListener('click', volverAlMenu);
+    document.getElementById('btn-reintentar').addEventListener('click', () => {
+      if (codigoSalaActual && codigoSalaActual !== 'GLOBAL') {
+        entrarAlDojo('joinRoom', { roomCode: codigoSalaActual });
+      } else {
+        entrarAlDojo('startGame');
+      }
+    });
+    if (btnIniciarPartidaLobby) {
+      btnIniciarPartidaLobby.addEventListener('click', () => {
+        if (socket) socket.emit('startLobbyMatch');
+      });
+    }
+    if (btnSalirLobby) {
+      btnSalirLobby.addEventListener('click', volverAlMenu);
+    }
+    document.getElementById('btn-gameover-salir').addEventListener('click', volverAlMenu);
+    function realizarParry() {
+      if (!juegoActivo || juegoPausado || !localPlayer) return;
+      localPlayer.ejecutarParry();
+      if (socket) socket.emit('playerAction', { tipo: 'parry' });
+    }
+
+    const teclas = { a: false, d: false };
+    window.addEventListener('keydown', (e) => {
+      if (!juegoActivo) return;
+      if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') {
+        alternarPausa();
+        return;
+      }
+      if (juegoPausado) return;
+      if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') teclas.a = true;
+      if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') teclas.d = true;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (localPlayer) {
+          localPlayer.saltar();
+          if (socket) socket.emit('playerAction', { tipo: 'jump' });
+        }
+      }
+      if (e.key === 'f' || e.key === 'F' || e.key === 'e' || e.key === 'E' || e.key === 'j' || e.key === 'J') {
+        realizarParry();
+      }
+    });
+    window.addEventListener('mousedown', (e) => {
+      if (e.button === 0) { // Clic izquierdo
+        realizarParry();
+      }
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') teclas.a = false;
+      if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') teclas.d = false;
+    });
+    const clock = new THREE.Clock();
+    let netTimer = 0;
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = Math.min(clock.getDelta(), 0.1);
+      if (juegoActivo) {
+        // En multijugador el mundo y los obstáculos siempre avanzan para todos
+        if (localPlayer && !juegoPausado) {
+          let dx = 0;
+          if (teclas.a) dx -= 1;
+          if (teclas.d) dx += 1;
+          if (dx !== 0) {
+            localPlayer.root.position.x = Math.max(-4.2, Math.min(4.2, localPlayer.root.position.x + dx * 9.0 * delta));
+          }
+          localPlayer.actualizar(delta);
+          netTimer += delta;
+          if (socket && netTimer >= 0.04) {
+            netTimer = 0;
+            socket.emit('playerMovement', {
+              x: Number(localPlayer.root.position.x.toFixed(2)),
+              y: Number(localPlayer.root.position.y.toFixed(2)),
+              z: Number(localPlayer.root.position.z.toFixed(2)),
+              rotY: localPlayer.root.rotation.y
+            });
+          }
+          if (!controls.enabled) {
+            camera.position.x = localPlayer.root.position.x * 0.7;
+            camera.position.y = 3.8;
+            camera.position.z = localPlayer.root.position.z + 7.5;
+            camera.lookAt(localPlayer.root.position.x * 0.5, 1.4, -15);
+          }
+        } else if (localPlayer) {
+          localPlayer.actualizar(delta);
+        }
+
+        remotePlayers.forEach(p => p.actualizar(delta));
+        if (invulnerableTimer > 0) {
+          invulnerableTimer = Math.max(0, invulnerableTimer - delta);
+          if (localPlayer && localPlayer.modelo) {
+            // Parpadeo visual durante invulnerabilidad
+            localPlayer.modelo.visible = Math.floor(invulnerableTimer * 15) % 2 === 0;
+          }
+        } else if (localPlayer && localPlayer.modelo) {
+          localPlayer.modelo.visible = true;
+        }
+
+        const localPos = localPlayer ? {
+          x: localPlayer.root.position.x,
+          y: (localPlayer.modelo ? localPlayer.modelo.position.y : 0) + 0.9,
+          z: localPlayer.root.position.z
+        } : null;
+
+        const parryActivo = localPlayer ? (localPlayer.parryTimer >= 0.12 && localPlayer.parryTimer <= 0.24) : false;
+
+        pool.actualizar(delta, localPos, parryActivo, (info) => {
+          esquivados++;
+          if (info.esCerca) {
+            esquivesCercanos++;
+            puntos += 50; // Puntos extra por esquive cercano
+            mostrarAvisoCerca();
+          } else {
+            puntos += 10; // Puntos estándar por esquivar
+          }
+          if (socket) socket.emit('playerStatsUpdate', { puntos, vidas });
+          actualizarHUD();
+        }, () => {
+          recibirDanio();
+        }, (impactPos) => {
+          // Éxito de PARRY con Katana
+          puntos += 150;
+          mostrarAvisoParry();
+          if (socket) socket.emit('playerStatsUpdate', { puntos, vidas });
+          actualizarHUD();
+        });
+        distancia += delta * 12;
+      } else {
+        const t = clock.getElapsedTime() * 0.2;
+        camera.position.set(Math.sin(t) * 8, 4.5, Math.cos(t) * 8 + 6);
+        camera.lookAt(0, 1.5, -15);
+      }
+      if (controls.enabled) controls.update();
+
+      renderer.render(scene, camera);
+    }
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+    async function init() {
+      iniciarSocket();
+      try {
+        await Promise.all([cargarNinja(), cargarShuriken()]);
+        pool.iniciar();
+        recursosListos = true;
+        const carga = document.getElementById('pantalla-carga');
+        if (carga) carga.style.display = 'none';
+        const btn = document.getElementById('btn-comenzar');
+        if (btn && btn.innerText === 'Cargando...') {
+          btn.innerText = 'Comenzar';
+        }
+        if (pendienteEntrar) {
+          entrarAlDojo(pendienteEntrar.tipo);
+          pendienteEntrar = null;
+        }
+        animate();
+      } catch (err) {
+        console.error('[Error al cargar recursos 3D]:', err);
+      }
+    }
+    init();
+</script>
+</body>
+</html>

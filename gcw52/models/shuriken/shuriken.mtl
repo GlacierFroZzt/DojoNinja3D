@@ -1,0 +1,9 @@
+# Material de Estrella Ninja (Shuriken de Acero)
+newmtl ShurikenSteel
+Ka 0.2 0.2 0.25
+Kd 0.7 0.75 0.85
+Ks 0.95 0.95 1.0
+Ns 120.0
+d 1.0
+illum 2
+map_Kd textures/shuriken_metal.png

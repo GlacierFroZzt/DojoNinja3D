@@ -1,0 +1,13 @@
+{
+  "name": "dojo-ninja-3d-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node gcw52/servidor.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.4",
+    "three": "^0.186.1"
+  }
+}

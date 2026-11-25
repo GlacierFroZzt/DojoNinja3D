@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/gcw52/api/index"
+    },
+    {
+      "source": "/socket.io/(.*)",
+      "destination": "/gcw52/api/index"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/gcw52/$1"
+    }
+  ]
+}
