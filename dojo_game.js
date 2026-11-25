@@ -750,13 +750,13 @@ function renderizarLobby(datos) {
       const esYo = socket && id === socket.id;
 
       const div = document.createElement('div');
-      div.style.cssText = 'background: #2a2a2a; border-radius: 6px; padding: 6px 12px; display: flex; justify-content: space-between; align-items: center; font-size: 14px;';
+      div.style.cssText = 'background: #222222; border: 1px solid #444444; padding: 6px 10px; display: flex; justify-content: space-between; align-items: center; font-size: 13px;';
       div.innerHTML = `
         <div style="display:flex; align-items:center; gap:8px;">
-          <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#4caf50;"></span>
-          <span style="${esYo ? 'color:#64b5f6; font-weight:bold;' : 'color:#fff;'}">${j.nombre || 'Ninja'} ${esYo ? '(Tú)' : ''}</span>
+          <span style="display:inline-block; width:8px; height:8px; background:#4caf50;"></span>
+          <span style="${esYo ? 'color:#64b5f6; font-weight:bold;' : 'color:#ffffff;'}">${j.nombre || 'Ninja'} ${esYo ? '(Tú)' : ''}</span>
         </div>
-        ${esAnf ? '<span style="background:#ff9800; color:#000; font-size:10px; font-weight:bold; padding:2px 6px; border-radius:4px;">ANFITRIÓN</span>' : '<span style="color:#888; font-size:11px;">Listo</span>'}
+        ${esAnf ? '<span style="background:#ff9800; color:#000000; font-size:10px; font-weight:bold; padding:2px 6px;">ANFITRIÓN</span>' : '<span style="color:#888888; font-size:11px;">Listo</span>'}
       `;
       lobbyLista.appendChild(div);
     });
