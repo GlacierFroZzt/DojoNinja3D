@@ -624,3 +624,133 @@ export class RedDojo {
     this.isHost = false;
   }
 }
+
+export const red = new RedDojo();
+
+export function renderizarLobby(datos, redInst = red) {
+  const pantallaLobby = document.getElementById('pantalla-lobby');
+  if (!pantallaLobby) return;
+
+  const errEl = document.getElementById('error-unirse-sala');
+  if (errEl) errEl.style.display = 'none';
+
+  const menuInicio = document.getElementById('menu-inicio');
+  if (menuInicio) menuInicio.style.display = 'none';
+
+  const modalUnirse = document.getElementById('modal-unirse-sala');
+  if (modalUnirse) modalUnirse.style.display = 'none';
+
+  const pantallaGameOver = document.getElementById('pantalla-gameover');
+  if (pantallaGameOver) pantallaGameOver.style.display = 'none';
+
+  const hudJuego = document.getElementById('hud-juego');
+  if (hudJuego) hudJuego.style.display = 'none';
+
+  pantallaLobby.style.display = 'flex';
+
+  const codigoSalaActual = datos.codigoSala || 'GLOBAL';
+  const lobbyCodigo = document.getElementById('lobby-codigo-sala');
+  if (lobbyCodigo) lobbyCodigo.textContent = codigoSalaActual;
+  const lobbyEstadoRed = document.getElementById('lobby-estado-red');
+  if (lobbyEstadoRed) {
+    if (datos.esAnfitrion) {
+      lobbyEstadoRed.textContent = (redInst.peer && redInst.peer.open)
+        ? 'En línea — Código listo para compartir'
+        : 'Conectando a red P2P... Espera un momento';
+      lobbyEstadoRed.style.color = (redInst.peer && redInst.peer.open) ? '#a5d6a7' : '#ffb74d';
+    } else {
+      lobbyEstadoRed.textContent = 'Conectado a la sala del anfitrión';
+      lobbyEstadoRed.style.color = '#a5d6a7';
+    }
+  }
+
+  const jugadoresObj = datos.jugadores || {};
+  const listaIds = Object.keys(jugadoresObj);
+  const lobbyContador = document.getElementById('lobby-contador-jugadores');
+  if (lobbyContador) lobbyContador.textContent = `${listaIds.length} ninja(s)`;
+
+  const lobbyLista = document.getElementById('lobby-lista-jugadores');
+  if (lobbyLista) {
+    lobbyLista.innerHTML = '';
+    listaIds.forEach((id) => {
+      const j = jugadoresObj[id];
+      const esAnf = id === datos.anfitrionId;
+      const esYo = id === redInst.miId;
+
+      const div = document.createElement('div');
+      div.style.cssText = 'background: #222222; border: 1px solid #444444; padding: 6px 10px; display: flex; justify-content: space-between; align-items: center; font-size: 13px;';
+      div.innerHTML = `
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="display:inline-block; width:8px; height:8px; background:#4caf50;"></span>
+          <span style="${esYo ? 'color:#64b5f6; font-weight:bold;' : 'color:#ffffff;'}">${j.nombre || 'Ninja'} ${esYo ? '(Tú)' : ''}</span>
+        </div>
+        ${esAnf ? '<span style="background:#ff9800; color:#000000; font-size:10px; font-weight:bold; padding:2px 6px;">ANFITRIÓN</span>' : '<span style="color:#888888; font-size:11px;">Listo</span>'}
+      `;
+      lobbyLista.appendChild(div);
+    });
+  }
+
+  const soyAnfitrion = (datos.anfitrionId === redInst.miId || redInst.isHost);
+  const btnIniciarLobby = document.getElementById('btn-iniciar-partida-lobby');
+  if (btnIniciarLobby) btnIniciarLobby.style.display = soyAnfitrion ? 'block' : 'none';
+
+  const lobbyAvisoEspera = document.getElementById('lobby-aviso-espera');
+  if (lobbyAvisoEspera) lobbyAvisoEspera.style.display = soyAnfitrion ? 'none' : 'block';
+}
+
+export function iniciarBotonesSalas(redInst = red) {
+  const btnCrear = document.getElementById('btn-crear-sala');
+  if (btnCrear) {
+    btnCrear.onclick = () => {
+      const el = document.getElementById('input-nombre') || document.getElementById('nombre-jugador');
+      const nombre = (el && el.value) ? el.value : 'Ninja Shinobi';
+      redInst.crearSala(nombre);
+    };
+  }
+
+  const btnAbrirUnirse = document.getElementById('btn-unirse-sala');
+  if (btnAbrirUnirse) {
+    btnAbrirUnirse.onclick = () => {
+      const errEl = document.getElementById('error-unirse-sala');
+      if (errEl) errEl.style.display = 'none';
+      const inputCod = document.getElementById('input-codigo-sala');
+      if (inputCod) inputCod.value = '';
+      const modal = document.getElementById('modal-unirse-sala');
+      if (modal) modal.style.display = 'flex';
+    };
+  }
+
+  const btnCancelar = document.getElementById('btn-cancelar-unirse');
+  if (btnCancelar) {
+    btnCancelar.onclick = () => {
+      if (redInst.timerUnirse) clearTimeout(redInst.timerUnirse);
+      const modal = document.getElementById('modal-unirse-sala');
+      if (modal) modal.style.display = 'none';
+    };
+  }
+
+  const btnConfirmar = document.getElementById('btn-confirmar-unirse');
+  if (btnConfirmar) {
+    btnConfirmar.onclick = () => {
+      const inputCod = document.getElementById('input-codigo-sala');
+      const codigo = inputCod ? inputCod.value.trim().toUpperCase() : '';
+      const errEl = document.getElementById('error-unirse-sala');
+      if (!codigo) {
+        if (errEl) {
+          errEl.textContent = 'Por favor escribe el código de la sala.';
+          errEl.style.color = '#ff5252';
+          errEl.style.display = 'block';
+        }
+        return;
+      }
+      if (errEl) {
+        errEl.textContent = 'Conectando a sala ' + codigo + '...';
+        errEl.style.color = '#ffb74d';
+        errEl.style.display = 'block';
+      }
+      const el = document.getElementById('input-nombre') || document.getElementById('nombre-jugador');
+      const nombre = (el && el.value) ? el.value : 'Ninja Shinobi';
+      redInst.unirseASala(codigo, nombre);
+    };
+  }
+}

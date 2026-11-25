@@ -156,3 +156,53 @@ export class SistemaSonido {
 }
 
 export const audio = new SistemaSonido();
+
+export function iniciarControlesAudio(audioInst = audio) {
+  const btnSonido = document.getElementById('btn-sonido-toggle');
+  if (btnSonido) {
+    btnSonido.onclick = () => {
+      const sonando = audioInst.alternarBGM();
+      btnSonido.textContent = sonando ? 'MÚSICA: ON' : 'MÚSICA: OFF';
+    };
+  }
+
+  const sliderMusica = document.getElementById('slider-vol-musica');
+  const valMusica = document.getElementById('val-vol-musica');
+  const sliderSFX = document.getElementById('slider-vol-sfx');
+  const valSFX = document.getElementById('val-vol-sfx');
+  const btnProbarKatana = document.getElementById('btn-probar-katana');
+
+  function sincronizar() {
+    const pMus = Math.round(audioInst.volumenMusica * 100);
+    const pSFX = Math.round(audioInst.volumenSFX * 100);
+    if (sliderMusica) sliderMusica.value = pMus;
+    if (valMusica) valMusica.textContent = `${pMus}%`;
+    if (sliderSFX) sliderSFX.value = pSFX;
+    if (valSFX) valSFX.textContent = `${pSFX}%`;
+  }
+
+  if (sliderMusica) {
+    sliderMusica.addEventListener('input', (e) => {
+      const v = parseInt(e.target.value);
+      audioInst.setVolumenMusica(v / 100);
+      if (valMusica) valMusica.textContent = `${v}%`;
+    });
+  }
+
+  if (sliderSFX) {
+    sliderSFX.addEventListener('input', (e) => {
+      const v = parseInt(e.target.value);
+      audioInst.setVolumenSFX(v / 100);
+      if (valSFX) valSFX.textContent = `${v}%`;
+    });
+  }
+
+  if (btnProbarKatana) {
+    btnProbarKatana.addEventListener('click', () => {
+      audioInst.playEspadazo();
+    });
+  }
+
+  sincronizar();
+  return sincronizar;
+}

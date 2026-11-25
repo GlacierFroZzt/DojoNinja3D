@@ -169,3 +169,109 @@ export class GestorPuntuacionesNube {
 }
 
 export const gestorPuntuacionesNube = new GestorPuntuacionesNube();
+
+export function iniciarModalPuntuaciones(gestorNube = gestorPuntuacionesNube) {
+  const btnPunt = document.getElementById('btn-puntuaciones');
+  if (btnPunt) {
+    btnPunt.onclick = () => {
+      const modal = document.getElementById('modal-puntuaciones');
+      if (modal) modal.style.display = 'flex';
+      const lista = document.getElementById('lista-puntuaciones-tabla');
+      if (lista) lista.innerHTML = '<p style="color:#aaa; text-align:center;">Consultando tabla de puntuaciones...</p>';
+
+      const renderTabla = (datos) => {
+        if (!lista) return;
+        if (!datos || datos.length === 0) {
+          lista.innerHTML = '<p style="color:#aaa; text-align:center;">No hay puntuaciones registradas aún.</p>';
+          return;
+        }
+        let html = '<table style="width: 100%; border-collapse: collapse; color: #eee; font-size: 13px;">';
+        html += '<tr style="border-bottom: 2px solid #555; background: rgba(255,255,255,0.05);">' +
+          '<th style="padding: 6px;">#</th><th style="padding: 6px; text-align: left;">Ninja</th>' +
+          '<th style="padding: 6px;">Pts</th><th style="padding: 6px;">Modo</th></tr>';
+        datos.slice(0, 15).forEach((p, idx) => {
+          const medalla = idx === 0 ? '🥇 ' : (idx === 1 ? '🥈 ' : (idx === 2 ? '🥉 ' : ''));
+          const esTop = idx < 3;
+          const colorNombre = esTop ? '#ffca28' : '#e0e0e0';
+          html += `<tr style="border-bottom: 1px solid #333; text-align: center;">
+            <td style="padding: 6px; color: #aaa;">${medalla}${idx + 1}</td>
+            <td style="padding: 6px; text-align: left; font-weight: bold; color: ${colorNombre};">${p.nombre || 'Ninja'}</td>
+            <td style="padding: 6px; color: #64b5f6; font-weight: bold;">${p.puntos}</td>
+            <td style="padding: 6px; font-size: 11px; color: #aaa;">${p.dificultad || 'Fácil'}</td>
+          </tr>`;
+        });
+        html += '</table>';
+        lista.innerHTML = html;
+      };
+
+      const locales = obtenerPuntuacionesLocales();
+      const nube = gestorNube.scoresGlobales || [];
+      let preliminar = normalizarYCombinarPuntuaciones(locales, nube);
+      if (preliminar.length > 0) renderTabla(preliminar);
+
+      fetch('/api/puntuaciones')
+        .then(r => r.json())
+        .then(datosApi => {
+          const combinadas = normalizarYCombinarPuntuaciones(locales, nube, Array.isArray(datosApi) ? datosApi : []);
+          guardarPuntuacionesLocales(combinadas);
+          renderTabla(combinadas);
+          gestorNube.publicarScores(combinadas);
+        })
+        .catch(() => {
+          if (preliminar.length === 0) {
+            renderTabla([
+              { nombre: 'Sensei Ryu', puntos: 520, dificultad: 'Dificil' },
+              { nombre: 'Kunoichi Sakura', puntos: 430, dificultad: 'Dificil' },
+              { nombre: 'Shadow Shinobi', puntos: 350, dificultad: 'Facil' }
+            ]);
+          }
+        });
+    };
+  }
+
+  const btnCerrar = document.getElementById('btn-cerrar-puntuaciones');
+  if (btnCerrar) {
+    btnCerrar.onclick = () => {
+      const m = document.getElementById('modal-puntuaciones');
+      if (m) m.style.display = 'none';
+    };
+  }
+}
+
+export function configurarCompartirRedes(getPuntosFn) {
+  function compartirWhatsApp() {
+    const pts = getPuntosFn ? getPuntosFn() : 0;
+    const t = encodeURIComponent(`¡Logré ${pts} puntos en el Dojo Ninja 3D! ¿Puedes superarme?`);
+    window.open(`https://api.whatsapp.com/send?text=${t}`, '_blank');
+  }
+  function compartirTwitter() {
+    const pts = getPuntosFn ? getPuntosFn() : 0;
+    const t = encodeURIComponent(`¡Hice ${pts} puntos esquivando shurikens en Dojo Ninja 3D con Three.js!`);
+    window.open(`https://twitter.com/intent/tweet?text=${t}`, '_blank');
+  }
+  function compartirFacebook() {
+    const url = encodeURIComponent(window.location.href);
+    window.open(`https://www.facebook.com/sharer/sharer.php?u=${url}`, '_blank');
+  }
+  function compartirInstagram() {
+    const pts = getPuntosFn ? getPuntosFn() : 0;
+    alert(`Copia tu récord para tu historia de Instagram:\n"¡Hice ${pts} puntos en Dojo Ninja 3D!"`);
+    window.open('https://www.instagram.com/', '_blank');
+  }
+
+  const ids = [
+    ['btn-share-whatsapp', compartirWhatsApp],
+    ['btn-share-twitter', compartirTwitter],
+    ['btn-share-facebook', compartirFacebook],
+    ['btn-share-instagram', compartirInstagram],
+    ['btn-gameover-whatsapp', compartirWhatsApp],
+    ['btn-gameover-twitter', compartirTwitter],
+    ['btn-gameover-facebook', compartirFacebook],
+    ['btn-gameover-instagram', compartirInstagram]
+  ];
+
+  ids.forEach(([id, fn]) => {
+    const el = document.getElementById(id);
+    if (el) el.onclick = fn;
+  });
+}

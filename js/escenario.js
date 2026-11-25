@@ -203,6 +203,38 @@ export function aplicarEscenario(esc) {
   }
 }
 
+export function iniciarControlesLuces(luzAmb = luzAmbiental, luzFoc = luzFocal, rend = renderer) {
+  const cfgFocal = document.getElementById('cfg-luz-focal') || document.getElementById('sel-color-luz');
+  if (cfgFocal) {
+    cfgFocal.onchange = (e) => {
+      const val = e.target.value;
+      luzFoc.color.set(val.startsWith('0x') ? parseInt(val) : val);
+    };
+  }
+
+  const cfgAmb = document.getElementById('cfg-luz-ambiental') || document.getElementById('sel-luz-ambiente');
+  if (cfgAmb) {
+    const handler = (e) => { luzAmb.intensity = parseFloat(e.target.value); };
+    cfgAmb.oninput = handler;
+    cfgAmb.onchange = handler;
+  }
+
+  const cfgSombras = document.getElementById('cfg-sombras') || document.getElementById('sel-sombras');
+  if (cfgSombras) {
+    cfgSombras.onchange = (e) => {
+      const v = e.target.value;
+      rend.shadowMap.enabled = (v === 'none' ? false : (e.target.checked !== undefined ? e.target.checked : true));
+    };
+  }
+
+  const selEscenarioEl = document.getElementById('sel-escenario');
+  if (selEscenarioEl) {
+    selEscenarioEl.addEventListener('change', (e) => {
+      aplicarEscenario(e.target.value);
+    });
+  }
+}
+
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
