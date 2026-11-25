@@ -590,17 +590,38 @@ class JugadorNinja {
     const c = document.createElement('canvas');
     c.width = 256; c.height = 64;
     const ctx = c.getContext('2d');
-    ctx.fillStyle = 'rgba(0,0,0,0.8)';
-    ctx.fillRect(10, 10, 236, 44);
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(8, 8, 240, 48);
+    const bordeHex = (this.color && this.color.ropa) ? '#' + (this.color.ropa).toString(16).padStart(6, '0') : '#64b5f6';
+    ctx.strokeStyle = bordeHex;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(8, 8, 240, 48);
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 22px Arial';
+    ctx.font = 'bold 20px Arial';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(texto, 128, 32);
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: false }));
-    sprite.scale.set(2, 0.5, 1);
+    sprite.scale.set(2.2, 0.55, 1);
     sprite.position.y = 2.4;
     return sprite;
+  }
+
+  actualizarEtiqueta(texto) {
+    if (this.etiqueta) this.root.remove(this.etiqueta);
+    this.etiqueta = this.crearEtiqueta(texto);
+    this.root.add(this.etiqueta);
+  }
+
+  cambiarColor(colorRopa) {
+    this.color.ropa = colorRopa;
+    if (this.modelo) {
+      if (plantillaNinja) {
+        this.pintarColor();
+      } else {
+        this.asignarModelo();
+      }
+    }
   }
 
   pintarColor() {
@@ -653,7 +674,7 @@ class JugadorNinja {
     }
 
     if (!this.esLocal) {
-      this.root.position.lerp(this.targetPos, 0.2);
+      this.root.position.lerp(this.targetPos, 0.25);
     }
   }
 
@@ -686,7 +707,7 @@ const RANGO_VISION_IA = 26.0;
 const VELOCIDAD_IA = 4.5;
 
 function actualizarIA(delta) {
-  if (!juegoActivo || juegoPausado) return;
+  if (!juegoActivo || juegoPausado || codigoSalaActual !== 'GLOBAL' || !enemigoIA || !enemigoIA.root.visible) return;
 
   const distanciaZ = jugador.root.position.z - enemigoIA.root.position.z;
   const distanciaX = jugador.root.position.x - enemigoIA.root.position.x;
@@ -726,6 +747,7 @@ class RedDojo {
     this.anfitrionId = null;
     this.listeners = {};
     this.timerUnirse = null;
+    this.obstacleSeq = 0;
 
     if (typeof io === 'function') {
       try {
@@ -789,11 +811,12 @@ class RedDojo {
     this.isHost = true;
     this.codigoSala = this.generarCodigo();
     this.anfitrionId = this.miId;
+    this.obstacleSeq = 0;
     this.jugadores = {
       [this.miId]: {
         id: this.miId,
         nombre: this.miNombre,
-        x: 0, y: 0, z: 0,
+        x: -1.5, y: 0, z: 0,
         esAnfitrion: true
       }
     };
@@ -853,7 +876,7 @@ class RedDojo {
       this.jugadores[gId] = {
         id: gId,
         nombre: gNombre,
-        x: 0, y: 0, z: 0,
+        x: 1.5, y: 0, z: 0,
         esAnfitrion: false
       };
 
@@ -930,7 +953,7 @@ class RedDojo {
         this.broadcastChannel = new BroadcastChannel(canalNombre);
         this.broadcastChannel.onmessage = (e) => {
           const msg = e.data;
-          if (msg && (msg.tipo === 'LOBBY_UPDATE' || msg.tipo === 'MATCH_STARTED' || msg.tipo === 'PLAYER_MOVED' || msg.tipo === 'PLAYER_LEFT')) {
+          if (msg && msg.tipo) {
             conectado = true;
             if (this.timerUnirse) clearTimeout(this.timerUnirse);
             this.procesarMensajeGuest(msg);
@@ -938,8 +961,9 @@ class RedDojo {
         };
         this.broadcastChannel.postMessage(req);
         // Reintentos rápidos por si el host tardó unos milisegundos en inicializar
-        setTimeout(() => { if (!conectado && this.broadcastChannel) this.broadcastChannel.postMessage(req); }, 300);
-        setTimeout(() => { if (!conectado && this.broadcastChannel) this.broadcastChannel.postMessage(req); }, 800);
+        setTimeout(() => { if (!conectado && this.broadcastChannel) this.broadcastChannel.postMessage(req); }, 250);
+        setTimeout(() => { if (!conectado && this.broadcastChannel) this.broadcastChannel.postMessage(req); }, 750);
+        setTimeout(() => { if (!conectado && this.broadcastChannel) this.broadcastChannel.postMessage(req); }, 1500);
       } catch (e) {
         console.warn('BroadcastChannel error:', e);
       }
@@ -987,6 +1011,7 @@ class RedDojo {
       });
       this.disparar('lobbyUpdate', msg);
     } else if (msg.tipo === 'MATCH_STARTED') {
+      if (msg.anfitrionId) this.anfitrionId = msg.anfitrionId;
       this.jugadores = msg.todosJugadores || this.jugadores;
       this.disparar('matchStarted', msg);
       this.disparar('jugadoresActuales', this.jugadores);
@@ -998,6 +1023,10 @@ class RedDojo {
       if (msg.id !== this.miId) {
         this.disparar('jugadorSalio', msg.id);
       }
+    } else if (msg.tipo === 'SPAWN_OBSTACLE') {
+      this.disparar('obstaculoGenerado', { seq: msg.seq, tipo: msg.tipoObj, posX: msg.posX });
+    } else if (msg.tipo === 'TIME_SYNC') {
+      this.disparar('tiempoSincronizado', msg.tiempo);
     }
   }
 
@@ -1011,11 +1040,43 @@ class RedDojo {
       const msg = {
         tipo: 'MATCH_STARTED',
         codigoSala: this.codigoSala,
+        anfitrionId: this.miId,
         todosJugadores: this.jugadores
       };
       this.enviarAClientes(msg);
       this.disparar('matchStarted', msg);
       this.disparar('jugadoresActuales', this.jugadores);
+    }
+  }
+
+  enviarObstaculo(datos) {
+    if (this.socket && this.socketConectado) {
+      this.socket.emit('spawnObstacle', datos);
+      return;
+    }
+    this.obstacleSeq++;
+    const msg = {
+      tipo: 'SPAWN_OBSTACLE',
+      seq: this.obstacleSeq,
+      tipoObj: datos.tipo,
+      posX: datos.posX
+    };
+    if (this.isHost) {
+      this.enviarAClientes(msg);
+    }
+  }
+
+  enviarTiempo(t) {
+    if (this.socket && this.socketConectado) {
+      this.socket.emit('syncTime', { tiempo: t });
+      return;
+    }
+    const msg = {
+      tipo: 'TIME_SYNC',
+      tiempo: t
+    };
+    if (this.isHost) {
+      this.enviarAClientes(msg);
     }
   }
 
@@ -1187,34 +1248,73 @@ red.on('matchStarted', (datos) => {
 });
 
 red.on('jugadoresActuales', (lista) => {
+  if (codigoSalaActual === 'GLOBAL') return;
   Object.keys(lista).forEach(id => {
     if (id !== red.miId && !otrosJugadores[id]) {
+      const esHostRemoto = (red.anfitrionId === id);
+      const colorRopa = esHostRemoto ? 0x153b54 : 0x881111;
+      const colorHex = esHostRemoto ? 0x2980b9 : 0xe74c3c;
+      const cintaHex = esHostRemoto ? 0xffffff : 0xff1744;
+      const posX = esHostRemoto ? -1.5 : 1.5;
+      const nombreRemoto = lista[id].nombre || (esHostRemoto ? 'Anfitrión' : 'Invitado');
+
       otrosJugadores[id] = new JugadorNinja({
         id,
-        nombre: lista[id].nombre || 'Ninja Aliado',
-        x: lista[id].x || 0,
+        nombre: nombreRemoto,
+        x: posX,
         y: 0,
-        z: lista[id].z || 0,
-        color: { hex: 0xf39c12, ropa: 0x8c2a2a, cinta: 0xffb74d }
+        z: 0,
+        color: { hex: colorHex, ropa: colorRopa, cinta: cintaHex }
       }, false);
+      otrosJugadores[id].actualizarEtiqueta(`${nombreRemoto} (${esHostRemoto ? 'Anfitrión' : 'Invitado'})`);
     }
   });
 });
 
 red.on('nuevoJugador', (datos) => {
+  if (codigoSalaActual === 'GLOBAL') return;
   if (datos.id !== red.miId && !otrosJugadores[datos.id]) {
+    const esHostRemoto = (red.anfitrionId === datos.id);
+    const colorRopa = esHostRemoto ? 0x153b54 : 0x881111;
+    const colorHex = esHostRemoto ? 0x2980b9 : 0xe74c3c;
+    const cintaHex = esHostRemoto ? 0xffffff : 0xff1744;
+    const posX = esHostRemoto ? -1.5 : 1.5;
+    const nombreRemoto = datos.nombre || (esHostRemoto ? 'Anfitrión' : 'Invitado');
+
     otrosJugadores[datos.id] = new JugadorNinja({
       id: datos.id,
-      nombre: datos.nombre || 'Ninja Aliado',
-      x: datos.x || 0,
+      nombre: nombreRemoto,
+      x: posX,
       y: 0,
-      z: datos.z || 0,
-      color: { hex: 0xf39c12, ropa: 0x8c2a2a, cinta: 0xffb74d }
+      z: 0,
+      color: { hex: colorHex, ropa: colorRopa, cinta: cintaHex }
     }, false);
+    otrosJugadores[datos.id].actualizarEtiqueta(`${nombreRemoto} (${esHostRemoto ? 'Anfitrión' : 'Invitado'})`);
   }
 });
 
 red.on('jugadorMovido', (datos) => {
+  if (datos.id === red.miId) return;
+
+  if (!otrosJugadores[datos.id] && juegoActivo && codigoSalaActual !== 'GLOBAL') {
+    const esHostRemoto = (red.anfitrionId === datos.id);
+    const colorRopa = esHostRemoto ? 0x153b54 : 0x881111;
+    const colorHex = esHostRemoto ? 0x2980b9 : 0xe74c3c;
+    const cintaHex = esHostRemoto ? 0xffffff : 0xff1744;
+    const posX = esHostRemoto ? -1.5 : 1.5;
+    const nombreRemoto = (red.jugadores && red.jugadores[datos.id] && red.jugadores[datos.id].nombre) || (esHostRemoto ? 'Anfitrión' : 'Invitado');
+
+    otrosJugadores[datos.id] = new JugadorNinja({
+      id: datos.id,
+      nombre: nombreRemoto,
+      x: datos.x !== undefined ? datos.x : posX,
+      y: 0,
+      z: 0,
+      color: { hex: colorHex, ropa: colorRopa, cinta: cintaHex }
+    }, false);
+    otrosJugadores[datos.id].actualizarEtiqueta(`${nombreRemoto} (${esHostRemoto ? 'Anfitrión' : 'Invitado'})`);
+  }
+
   if (otrosJugadores[datos.id]) {
     otrosJugadores[datos.id].targetPos.x = datos.x;
   }
@@ -1224,6 +1324,28 @@ red.on('jugadorSalio', (id) => {
   if (otrosJugadores[id]) {
     otrosJugadores[id].destruir();
     delete otrosJugadores[id];
+  }
+  mostrarAviso('hud-aviso-cerca', '¡Un ninja ha salido!');
+});
+
+let ultimoObstaculoSeq = -1;
+red.on('obstaculoGenerado', (datos) => {
+  if (datos.seq !== undefined) {
+    if (datos.seq <= ultimoObstaculoSeq) return; // Deduplicación entre WebRTC y BroadcastChannel
+    ultimoObstaculoSeq = datos.seq;
+  }
+  if (juegoActivo && !juegoPausado) {
+    crearElementoPorTipo(datos.tipo, datos.posX);
+  }
+});
+
+red.on('tiempoSincronizado', (t) => {
+  if (juegoActivo && !red.isHost) {
+    tiempo = t;
+    actualizarHUD();
+    if (tiempo <= 0) {
+      terminarJuego('¡Tiempo cumplido! ¡Misión superada!');
+    }
   }
 });
 
@@ -1375,7 +1497,40 @@ if (selEscenarioEl) {
 let obstaculos = [];
 let spawnTimer = 0;
 
+function crearElementoPorTipo(tipo, posX) {
+  let obj;
+  if (tipo === 'item_pocion') {
+    obj = crearPocionMesh();
+    obj.tipo = 'item_pocion';
+    obj.position.set(posX, 1.2, -45);
+  } else if (tipo === 'item_escudo') {
+    obj = crearEscudoItemMesh();
+    obj.tipo = 'item_escudo';
+    obj.position.set(posX, 1.2, -45);
+  } else if (tipo === 'item_pergamino') {
+    obj = crearPergaminoMesh();
+    obj.tipo = 'item_pergamino';
+    obj.position.set(posX, 1.2, -45);
+  } else if (tipo === 'shuriken') {
+    obj = crearShurikenMesh();
+    obj.tipo = 'shuriken';
+    obj.position.set(posX, 1.2, -45);
+  } else {
+    obj = crearPergaminoMesh();
+    obj.tipo = 'pergamino';
+    obj.position.set(posX, 1.2, -45);
+  }
+  scene.add(obj);
+  obstaculos.push(obj);
+  return obj;
+}
+
 function generarElemento(delta) {
+  // En sala multijugador, solo el anfitrión genera los obstáculos para que ambos esquiven lo mismo
+  if (codigoSalaActual !== 'GLOBAL' && !red.isHost) {
+    return;
+  }
+
   spawnTimer += delta;
   const frecuencia = dificultadActual === 'dificil' ? 0.6 : 0.85;
 
@@ -1383,33 +1538,23 @@ function generarElemento(delta) {
     spawnTimer = 0;
     const posX = (Math.random() * 8) - 4;
     const rand = Math.random();
-    let obj;
+    let tipo = 'shuriken';
 
     if (rand < 0.10) {
-      obj = crearPocionMesh();
-      obj.tipo = 'item_pocion';
-      obj.position.set(posX, 1.2, -45);
+      tipo = 'item_pocion';
     } else if (rand < 0.20) {
-      obj = crearEscudoItemMesh();
-      obj.tipo = 'item_escudo';
-      obj.position.set(posX, 1.2, -45);
+      tipo = 'item_escudo';
     } else if (rand < 0.28) {
-      obj = crearPergaminoMesh();
-      obj.tipo = 'item_pergamino';
-      obj.position.set(posX, 1.2, -45);
+      tipo = 'item_pergamino';
     } else {
-      if (modoActual === 'esquivar') {
-        obj = crearShurikenMesh();
-        obj.tipo = 'shuriken';
-        obj.position.set(posX, 1.2, -45);
-      } else {
-        obj = crearPergaminoMesh();
-        obj.tipo = 'pergamino';
-        obj.position.set(posX, 1.2, -45);
-      }
+      tipo = (modoActual === 'esquivar') ? 'shuriken' : 'pergamino';
     }
-    scene.add(obj);
-    obstaculos.push(obj);
+
+    crearElementoPorTipo(tipo, posX);
+
+    if (codigoSalaActual !== 'GLOBAL' && red.isHost) {
+      red.enviarObstaculo({ tipo, posX });
+    }
   }
 }
 
@@ -1544,13 +1689,24 @@ function animate() {
     jugador.actualizar(delta, seMueve);
     luzFocal.target = jugador.root;
 
-    // Multijugador
+    // Multijugador: Enviar posición en tiempo real
     red.enviarMovimiento({ x: jugador.root.position.x, y: 0, z: 0 });
 
-    // Inteligencia Artificial enemiga
-    actualizarIA(delta);
+    // Actualizar ninjas de jugadores remotos
+    Object.values(otrosJugadores).forEach((p) => {
+      if (p) {
+        const distancia = Math.abs(p.targetPos.x - p.root.position.x);
+        const seMueveRemoto = distancia > 0.04;
+        p.actualizar(delta, seMueveRemoto);
+      }
+    });
 
-    // Obstáculos
+    // Inteligencia Artificial enemiga (solo en partida solitaria)
+    if (codigoSalaActual === 'GLOBAL' && enemigoIA && enemigoIA.root.visible) {
+      actualizarIA(delta);
+    }
+
+    // Obstáculos (sincronizados por el anfitrión si es sala)
     generarElemento(delta);
     for (let i = 0; i < obstaculos.length; i++) {
       const obs = obstaculos[i];
@@ -1605,7 +1761,7 @@ function empezarPartida() {
   tiempo = 30; // 30s fijos
   juegoActivo = true;
   juegoPausado = false;
-  jugador.root.position.set(0, 0, 0);
+  ultimoObstaculoSeq = -1;
 
   obstaculos.forEach(o => scene.remove(o));
   obstaculos = [];
@@ -1621,26 +1777,78 @@ function empezarPartida() {
   const nombre = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja';
   red.entrarJuego({ nombre, codigoSala: codigoSalaActual });
 
-  if (red.jugadores) {
-    Object.keys(red.jugadores).forEach(id => {
-      if (id !== red.miId && !otrosJugadores[id]) {
-        otrosJugadores[id] = new JugadorNinja({
-          id,
-          nombre: red.jugadores[id].nombre || 'Ninja Aliado',
-          x: red.jugadores[id].x || 0,
-          y: 0,
-          z: red.jugadores[id].z || 0,
-          color: { hex: 0xf39c12, ropa: 0x8c2a2a, cinta: 0xffb74d }
-        }, false);
-      }
+  // Configuración de personajes según modo (Solitario vs Sala Multijugador)
+  if (codigoSalaActual !== 'GLOBAL') {
+    // EN SALA MULTIJUGADOR:
+    // 1. Ocultar el rival IA para evitar confusiones
+    enemigoIA.root.visible = false;
+
+    // 2. Limpiar personajes remotos previos
+    Object.keys(otrosJugadores).forEach(id => {
+      if (otrosJugadores[id]) otrosJugadores[id].destruir();
     });
+    otrosJugadores = {};
+
+    if (red.isHost) {
+      // ANFITRIÓN: Azul (0x153b54), carril izquierdo (x = -1.5)
+      jugador.cambiarColor(0x153b54);
+      jugador.root.position.set(-1.5, 0, 0);
+      jugador.actualizarEtiqueta(`${nombre} (Tú - Anfitrión)`);
+
+      // Crear modelo del Invitado remoto en carril derecho (x = 1.5), Rojo (0x881111)
+      const guestId = Object.keys(red.jugadores || {}).find(id => id !== red.miId);
+      const guestNombre = (guestId && red.jugadores[guestId] && red.jugadores[guestId].nombre) || 'Invitado';
+      if (guestId) {
+        otrosJugadores[guestId] = new JugadorNinja({
+          id: guestId,
+          nombre: guestNombre,
+          x: 1.5, y: 0, z: 0,
+          color: { hex: 0xe74c3c, ropa: 0x881111, cinta: 0xff1744 }
+        }, false);
+        otrosJugadores[guestId].actualizarEtiqueta(`${guestNombre} (Invitado)`);
+      }
+    } else {
+      // INVITADO: Rojo (0x881111), carril derecho (x = 1.5)
+      jugador.cambiarColor(0x881111);
+      jugador.root.position.set(1.5, 0, 0);
+      jugador.actualizarEtiqueta(`${nombre} (Tú)`);
+
+      // Crear modelo del Anfitrión remoto en carril izquierdo (x = -1.5), Azul (0x153b54)
+      const hostId = red.anfitrionId || Object.keys(red.jugadores || {}).find(id => id !== red.miId);
+      const hostNombre = (hostId && red.jugadores[hostId] && red.jugadores[hostId].nombre) || 'Anfitrión';
+      if (hostId) {
+        otrosJugadores[hostId] = new JugadorNinja({
+          id: hostId,
+          nombre: hostNombre,
+          x: -1.5, y: 0, z: 0,
+          color: { hex: 0x2980b9, ropa: 0x153b54, cinta: 0xffffff }
+        }, false);
+        otrosJugadores[hostId].actualizarEtiqueta(`${hostNombre} (Anfitrión)`);
+      }
+    }
+  } else {
+    // EN SOLITARIO:
+    // 1. Mostrar y reposicionar el rival IA
+    enemigoIA.root.visible = true;
+    enemigoIA.root.position.set(0, 0, -28);
+    // 2. Jugador local en el centro, Azul
+    jugador.cambiarColor(0x153b54);
+    jugador.root.position.set(0, 0, 0);
+    jugador.actualizarEtiqueta(`${nombre} (Tú)`);
   }
 
+  // Temporizador de partida sincronizado
   if (intervaloTiempo) clearInterval(intervaloTiempo);
   intervaloTiempo = setInterval(() => {
     if (!juegoPausado && juegoActivo) {
+      if (codigoSalaActual !== 'GLOBAL' && !red.isHost) {
+        return; // El invitado sincroniza el tiempo con el anfitrión
+      }
       tiempo--;
       actualizarHUD();
+      if (codigoSalaActual !== 'GLOBAL' && red.isHost) {
+        red.enviarTiempo(tiempo);
+      }
       if (tiempo <= 0) {
         terminarJuego('¡Tiempo cumplido! ¡Misión superada!');
       }
@@ -1700,6 +1908,16 @@ function volverAlMenu() {
     if (otrosJugadores[id]) otrosJugadores[id].destruir();
   });
   otrosJugadores = {};
+
+  // Restablecer al jugador local y rival IA
+  jugador.cambiarColor(0x153b54);
+  jugador.root.position.set(0, 0, 0);
+  const nombre = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja Shinobi';
+  jugador.actualizarEtiqueta(`${nombre} (Tú)`);
+
+  enemigoIA.root.visible = true;
+  enemigoIA.root.position.set(0, 0, -28);
+  ultimoObstaculoSeq = -1;
 
   const pantallaLobby = document.getElementById('pantalla-lobby');
   if (pantallaLobby) pantallaLobby.style.display = 'none';
