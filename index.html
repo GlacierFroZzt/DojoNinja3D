@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dojo Ninja 3D</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Shojumaru&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="dojo.css">
+  <script>
+    window.io = window.io || function() {
+      return {
+        on: function() {},
+        emit: function() {},
+        id: 'local_' + Math.random().toString(36).substring(2, 7)
+      };
+    };
+  </script>
+  <script src="/socket.io/socket.io.js" onerror="console.log('Modo individual activo')"></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="pantalla-carga">
+    <div>Invocando Dojo Ninja 3D...</div>
+  </div>
+  <div id="impacto-rojo"></div>
+
+  <!-- HUD SUPERIOR EN EL JUEGO -->
+  <div id="hud-juego">
+    <div class="hud-simple-barra">
+      <div class="hud-vidas-box">
+        <span style="color: #aaa; margin-right: 4px;">VIDAS:</span>
+        <span class="vida-barra" id="vida-1"></span>
+        <span class="vida-barra" id="vida-2"></span>
+        <span class="vida-barra" id="vida-3"></span>
+      </div>
+      <div style="display: flex; gap: 10px; align-items: center;">
+        <div class="hud-sala-tag" id="hud-sala-tag">MODO: ESQUIVAR</div>
+        <div class="hud-timer-box" id="hud-tiempo">TIEMPO 00:30</div>
+      </div>
+      <div class="hud-puntaje-simple">
+        PUNTOS: <span id="hud-puntos">0</span>
+      </div>
+    </div>
+    <div id="hud-aviso-cerca">CERCA +50</div>
+    <div id="hud-aviso-parry">¡PARRY KATANA +150!</div>
+  </div>
+
+  <!-- 1. PANTALLA DE MENU INICIAL (CON OPCIONES DE RUBRICA INTEGRADAS EN EL DOJO) -->
+  <div id="menu-inicio">
+    <div class="caja-menu">
+      <h2 style="color: #64b5f6; font-size: 24px; margin-bottom: 2px;">Dojo Ninja 3D</h2>
+      <p style="font-size: 11px; color: #aaa; margin-top: 0;">Presiona <b>Espacio</b> para Parry con Katana | Flechas para esquivar</p>
+
+      <div style="text-align: left;">
+        <label style="font-size: 12px; color: #bbb;">Nombre del Ninja:</label>
+        <input type="text" id="input-nombre" class="input-texto" value="Ninja Shinobi" maxlength="14">
+      </div>
+
+      <div style="display: flex; gap: 8px;">
+        <div style="flex: 1; text-align: left;">
+          <label style="font-size: 11px; color: #bbb;">Modo de Juego:</label>
+          <select id="sel-modo" style="width: 100%;">
+            <option value="esquivar">Modo Shurikens (Esquivar)</option>
+            <option value="monedas">Modo Pergaminos (Recolectar)</option>
+          </select>
+        </div>
+        <div style="flex: 1; text-align: left;">
+          <label style="font-size: 11px; color: #bbb;">Dificultad (30s fijos):</label>
+          <select id="sel-dificultad" style="width: 100%;">
+            <option value="facil">Fácil (Lento - 3 Vidas)</option>
+            <option value="dificil">Difícil (Rápido - 2 Vidas)</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="text-align: left;">
+        <label style="font-size: 11px; color: #bbb;">Escenario Ninja (3 Escenarios):</label>
+        <select id="sel-escenario" style="width: 100%;">
+          <option value="dojo">Escenario 1: Tatami Tradicional (Dojo)</option>
+          <option value="noche">Escenario 2: Asfalto de Noche (Ciudad)</option>
+          <option value="lava">Escenario 3: Volcán de Fuego (Lava)</option>
+        </select>
+      </div>
+
+      <button id="btn-comenzar" class="btn btn-verde" style="margin-top: 6px;">¡Comenzar Desafío!</button>
+      <button id="btn-puntuaciones" class="btn">Tabla de Puntuaciones (REST)</button>
+      <button id="btn-opciones" class="btn" style="background: #37474f;">Configuraciones</button>
+    </div>
+  </div>
+
+  <!-- 2. PANTALLA DE CONFIGURACIONES (LUCES E ILUMINACION FOCAL Y AMBIENTAL) -->
+  <div id="modal-opciones">
+    <div class="caja-menu" style="max-width: 380px;">
+      <h3 style="color: #ffb74d;">Configuraciones</h3>
+      
+      <div class="fila-opcion" style="margin: 6px 0;">
+        <span>Color Iluminación Focal (Linterna):</span>
+        <select id="sel-color-luz">
+          <option value="0xffffff">Blanco Neutro</option>
+          <option value="0x00e5ff" selected>Celeste Ninja</option>
+          <option value="0xffd700">Dorado Shinto</option>
+          <option value="0xff3344">Rojo Fuego</option>
+        </select>
+      </div>
+
+      <div class="fila-opcion" style="margin: 6px 0;">
+        <span>Intensidad Luz Ambiental:</span>
+        <select id="sel-luz-ambiente">
+          <option value="1.2">Normal (1.2)</option>
+          <option value="2.0">Brillante (2.0)</option>
+          <option value="0.5">Penumbra (0.5)</option>
+        </select>
+      </div>
+
+      <div class="fila-opcion" style="margin: 6px 0;">
+        <span>Sombras Dinámicas:</span>
+        <select id="sel-sombras">
+          <option value="medium" selected>Activadas (PCF)</option>
+          <option value="none">Desactivadas</option>
+        </select>
+      </div>
+
+      <button id="btn-cerrar-opciones" class="btn btn-verde" style="margin-top: 12px;">Volver</button>
+    </div>
+  </div>
+
+  <!-- 3. PANTALLA DE PUNTUACIONES (SERVICIO WEB REST + SOCIAL SHARE) -->
+  <div id="modal-puntuaciones" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); z-index: 120; align-items: center; justify-content: center;">
+    <div class="caja-menu" style="max-width: 420px;">
+      <h3 style="color: #64b5f6;">Tabla de Puntuaciones</h3>
+      <p style="font-size: 11px; color: #888; margin: 0 0 8px 0;">Consumiendo Servicio Web REST (/api/puntuaciones)</p>
+      
+      <div id="lista-puntuaciones-tabla" style="text-align: left; max-height: 150px; overflow-y: auto; background: #0e1217; padding: 10px; border: 1px solid #334; border-radius: 4px; font-size: 13px;">
+        Cargando puntuaciones...
+      </div>
+
+      <div style="margin-top: 10px; text-align: left;">
+        <span style="font-size: 12px; color: #bbb;">Compartir en redes sociales:</span>
+        <div style="display: flex; gap: 8px; margin-top: 4px;">
+          <button class="btn btn-red-social" id="btn-share-whatsapp" style="flex: 1; padding: 8px;">WhatsApp</button>
+          <button class="btn btn-twitter" id="btn-share-twitter" style="flex: 1; padding: 8px;">Twitter / X</button>
+        </div>
+      </div>
+
+      <button id="btn-cerrar-puntuaciones" class="btn btn-verde" style="margin-top: 10px;">Cerrar</button>
+    </div>
+  </div>
+
+  <!-- 4. PANTALLA DE PAUSA -->
+  <div id="menu-pausa">
+    <div class="caja-menu" style="max-width: 340px;">
+      <h3 style="color: #ffb74d;">Dojo en Pausa</h3>
+      <button id="btn-reanudar" class="btn btn-verde" style="margin-top: 8px;">Reanudar Partida</button>
+      <button id="btn-pausa-opciones" class="btn">Configuraciones</button>
+      <button id="btn-pausa-salir" class="btn btn-rojo">Salir al Menú</button>
+    </div>
+  </div>
+
+  <!-- 5. PANTALLA FIN DE JUEGO / GAME OVER -->
+  <div id="pantalla-gameover" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); z-index: 110; align-items: center; justify-content: center;">
+    <div class="caja-menu" style="max-width: 380px;">
+      <h2 id="gameover-titulo" style="color: #e53935; font-size: 26px;">¡GAME OVER!</h2>
+      <p id="gameover-subtitulo" style="color: #ccc; font-size: 14px;">Te has quedado sin vidas.</p>
+      <div style="background: #2a2a2a; border-radius: 6px; padding: 12px; margin: 10px 0;">
+        <div style="color: #aaa; font-size: 12px;">PUNTAJE FINAL OBTENIDO</div>
+        <div id="gameover-puntos" style="font-size: 32px; font-weight: bold; color: #ffb74d;">0</div>
+        <div id="gameover-stats" style="font-size: 12px; color: #bbb; margin-top: 4px;">0 esquivados</div>
+      </div>
+      <button id="btn-gameover-whatsapp" class="btn btn-red-social">Compartir mi récord en WhatsApp</button>
+      <button id="btn-reintentar" class="btn btn-verde" style="margin-top: 6px;">Jugar de Nuevo</button>
+      <button id="btn-gameover-salir" class="btn btn-rojo">Salir al Menú</button>
+    </div>
+  </div>
+
+  <div id="canvas-container"></div>
+  <script type="module" src="dojo_game.js"></script>
+</body>
+</html>

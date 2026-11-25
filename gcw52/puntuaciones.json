@@ -1,0 +1,50 @@
+[
+  {
+    "id": "seed_1",
+    "nombre": "MaestroNinja67",
+    "puntos": 1850,
+    "modo": "contrarreloj",
+    "dificultad": "dificil",
+    "escenario": "volcan",
+    "esquivados": 42,
+    "parries": 6,
+    "oleada": 1,
+    "fecha": "2026-11-20T18:00:00.000Z"
+  },
+  {
+    "id": "seed_2",
+    "nombre": "SakuraBlade",
+    "puntos": 1420,
+    "modo": "katana",
+    "dificultad": "maestro",
+    "escenario": "sakura",
+    "esquivados": 18,
+    "parries": 9,
+    "oleada": 1,
+    "fecha": "2026-11-21T19:30:00.000Z"
+  },
+  {
+    "id": "seed_3",
+    "nombre": "NinjaGaidenFan",
+    "puntos": 1180,
+    "modo": "supervivencia",
+    "dificultad": "normal",
+    "escenario": "dojo",
+    "esquivados": 55,
+    "parries": 4,
+    "oleada": 4,
+    "fecha": "2026-11-22T21:15:00.000Z"
+  },
+  {
+    "id": "seed_4",
+    "nombre": "KageSombra",
+    "puntos": 890,
+    "modo": "contrarreloj",
+    "dificultad": "normal",
+    "escenario": "dojo",
+    "esquivados": 34,
+    "parries": 3,
+    "oleada": 1,
+    "fecha": "2026-11-23T15:10:00.000Z"
+  }
+]
