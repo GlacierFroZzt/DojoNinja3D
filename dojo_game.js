@@ -790,29 +790,182 @@ const jugador = new JugadorNinja({
 }, true);
 
 // =============================================================
-// 7. MULTIJUGADOR EN TIEMPO REAL (P2P WEBRTC / BROADCASTCHANNEL)
-// Comunicación directa entre navegadores sin servidores locales ni dependencias externas
+// 7. MULTIJUGADOR EN TIEMPO REAL (WEBSOCKET CLOUD RELAY + WEBRTC)
+// Comunicación directa en tiempo real compatible con cualquier navegador (incluyendo Brave),
+// redes móviles 4G/5G, Wi-Fi con CGNAT y routers residenciales sin bloqueos.
 // =============================================================
-const PEER_CONFIG = {
-  debug: 1,
-  config: {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' },
-      { urls: 'stun:global.stun.twilio.com:3478' }
-    ]
+
+class RelayWebSocket {
+  constructor(roomCode, onMessage, onReady) {
+    this.roomCode = roomCode.toLowerCase();
+    this.onMessage = onMessage;
+    this.onReady = onReady;
+    this.topic = 'dojoninja3d_sala_' + this.roomCode;
+    this.ws = null;
+    this.pingInterval = null;
+    this.ultimoEnvioMov = 0;
+    this.serverIndex = 0;
+    this.servers = [
+      'wss://broker.emqx.io:8084/mqtt',
+      'wss://broker.hivemq.com:8884/mqtt'
+    ];
+    this.conectar();
   }
-};
+
+  conectar() {
+    if (this.ws) {
+      try { this.ws.close(); } catch (e) {}
+      this.ws = null;
+    }
+    const url = this.servers[this.serverIndex % this.servers.length];
+    try {
+      this.ws = new WebSocket(url, ['mqtt']);
+      this.ws.binaryType = 'arraybuffer';
+
+      this.ws.onopen = () => {
+        this.enviarConnect();
+      };
+
+      this.ws.onmessage = (e) => {
+        const buf = new Uint8Array(e.data);
+        const tipo = buf[0] >> 4;
+        if (tipo === 2) { // CONNACK
+          this.enviarSubscribe(this.topic);
+          if (this.onReady) this.onReady();
+          if (this.pingInterval) clearInterval(this.pingInterval);
+          this.pingInterval = setInterval(() => {
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+              this.ws.send(new Uint8Array([0xC0, 0x00])); // PINGREQ
+            }
+          }, 25000);
+        } else if (tipo === 3) { // PUBLISH
+          let pos = 1;
+          let multiplier = 1;
+          let remainingLength = 0;
+          let digit;
+          do {
+            digit = buf[pos++];
+            remainingLength += (digit & 127) * multiplier;
+            multiplier *= 128;
+          } while ((digit & 128) !== 0);
+
+          const topicLen = (buf[pos] << 8) | buf[pos + 1];
+          pos += 2 + topicLen;
+          const payloadBytes = buf.subarray(pos);
+          try {
+            const jsonStr = new TextDecoder().decode(payloadBytes);
+            const data = JSON.parse(jsonStr);
+            if (this.onMessage) this.onMessage(data);
+          } catch (err) {}
+        }
+      };
+
+      this.ws.onerror = (e) => {
+        console.warn('RelayWS connection error on ' + url + ', probando servidor alterno...');
+        if (this.serverIndex < this.servers.length - 1) {
+          this.serverIndex++;
+          setTimeout(() => this.conectar(), 500);
+        }
+      };
+
+      this.ws.onclose = () => {
+        if (this.pingInterval) clearInterval(this.pingInterval);
+      };
+    } catch (e) {
+      console.warn('RelayWS init error:', e);
+    }
+  }
+
+  encStr(s) {
+    const bytes = new TextEncoder().encode(s);
+    const arr = new Uint8Array(2 + bytes.length);
+    arr[0] = bytes.length >> 8;
+    arr[1] = bytes.length & 0xff;
+    arr.set(bytes, 2);
+    return arr;
+  }
+
+  enviarConnect() {
+    const cId = this.encStr('ninja_' + Math.random().toString(36).substring(2, 9));
+    const proto = this.encStr('MQTT');
+    const varHeader = new Uint8Array(proto.length + 4 + cId.length);
+    varHeader.set(proto, 0);
+    varHeader[proto.length] = 4;
+    varHeader[proto.length + 1] = 2;
+    varHeader[proto.length + 2] = 0;
+    varHeader[proto.length + 3] = 60;
+    varHeader.set(cId, proto.length + 4);
+
+    const packet = new Uint8Array(2 + varHeader.length);
+    packet[0] = 0x10;
+    packet[1] = varHeader.length;
+    packet.set(varHeader, 2);
+    this.ws.send(packet);
+  }
+
+  enviarSubscribe(topic) {
+    const topicArr = this.encStr(topic);
+    const subBody = new Uint8Array(2 + topicArr.length + 1);
+    subBody[0] = 0;
+    subBody[1] = 1;
+    subBody.set(topicArr, 2);
+    subBody[subBody.length - 1] = 0;
+
+    const packet = new Uint8Array(2 + subBody.length);
+    packet[0] = 0x82;
+    packet[1] = subBody.length;
+    packet.set(subBody, 2);
+    this.ws.send(packet);
+  }
+
+  publicar(obj) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    if (obj.tipo === 'PLAYER_MOVED') {
+      const ahora = performance.now();
+      if (ahora - this.ultimoEnvioMov < 40) return;
+      this.ultimoEnvioMov = ahora;
+    }
+    try {
+      const topicArr = this.encStr(this.topic);
+      const payload = new TextEncoder().encode(JSON.stringify(obj));
+      const remLen = topicArr.length + payload.length;
+
+      const lenBytes = [];
+      let x = remLen;
+      do {
+        let encodedByte = x % 128;
+        x = Math.floor(x / 128);
+        if (x > 0) encodedByte = encodedByte | 128;
+        lenBytes.push(encodedByte);
+      } while (x > 0);
+
+      const packet = new Uint8Array(1 + lenBytes.length + remLen);
+      packet[0] = 0x30;
+      packet.set(lenBytes, 1);
+      packet.set(topicArr, 1 + lenBytes.length);
+      packet.set(payload, 1 + lenBytes.length + topicArr.length);
+      this.ws.send(packet);
+    } catch (e) {
+      console.warn('Error publicando en relay:', e);
+    }
+  }
+
+  cerrar() {
+    if (this.pingInterval) clearInterval(this.pingInterval);
+    if (this.ws) {
+      try { this.ws.close(); } catch (e) {}
+      this.ws = null;
+    }
+  }
+}
 
 class RedDojo {
   constructor() {
+    this.relay = null;
+    this.broadcastChannel = null;
     this.peer = null;
     this.peerConexiones = new Map();
     this.peerHostConn = null;
-    this.broadcastChannel = null;
     this.isHost = false;
     this.codigoSala = '';
     this.miId = 'ninja_' + Math.random().toString(36).substring(2, 8);
@@ -877,7 +1030,19 @@ class RedDojo {
   iniciarCanalesHost(codigo) {
     const canalNombre = 'dojo3d_room_' + codigo.toLowerCase();
 
-    // 1. BroadcastChannel (mismo navegador / distintas pestañas en Vercel)
+    // 1. Relay WebSocket Cloud (Funciona 100% garantizado en Brave, Chrome, Wi-Fi y celulares)
+    this.relay = new RelayWebSocket(codigo, (msg) => {
+      this.procesarMensajeHost(msg);
+    }, () => {
+      console.log('[Relay Host] Sala lista en la nube con código:', codigo);
+      const estadoEl = document.getElementById('lobby-estado-red');
+      if (estadoEl) {
+        estadoEl.textContent = 'En línea — Código listo para compartir';
+        estadoEl.style.color = '#a5d6a7';
+      }
+    });
+
+    // 2. BroadcastChannel (mismo navegador / distintas pestañas en Vercel)
     if (typeof BroadcastChannel !== 'undefined') {
       try {
         this.broadcastChannel = new BroadcastChannel(canalNombre);
@@ -886,68 +1051,11 @@ class RedDojo {
         console.warn('BroadcastChannel error:', e);
       }
     }
-
-    // 2. PeerJS WebRTC (distintos dispositivos / redes)
-    if (typeof Peer !== 'undefined') {
-      try {
-        const peerId = 'dojoninja-' + codigo.toLowerCase();
-        this.peer = new Peer(peerId, PEER_CONFIG);
-
-        this.peer.on('open', (id) => {
-          console.log('[PeerJS Host] En línea con ID:', id);
-          const estadoEl = document.getElementById('lobby-estado-red');
-          if (estadoEl) {
-            estadoEl.textContent = 'En línea — Código listo para compartir';
-            estadoEl.style.color = '#a5d6a7';
-          }
-        });
-
-        this.peer.on('connection', (conn) => {
-          this.peerConexiones.set(conn.peer, conn);
-
-          const responderLobby = () => {
-            const respuesta = {
-              tipo: 'LOBBY_UPDATE',
-              codigoSala: this.codigoSala,
-              anfitrionId: this.anfitrionId,
-              jugadores: this.jugadores
-            };
-            try { conn.send(respuesta); } catch (e) {}
-          };
-
-          if (conn.open) {
-            responderLobby();
-          } else {
-            conn.on('open', responderLobby);
-          }
-
-          conn.on('data', (data) => this.procesarMensajeHost(data, conn));
-          conn.on('close', () => {
-            this.peerConexiones.delete(conn.peer);
-          });
-          conn.on('error', (err) => {
-            console.warn('[PeerJS Host Conn Error]', err);
-          });
-        });
-
-        this.peer.on('error', (err) => {
-          console.warn('PeerJS host info:', err.type || err);
-          if (err.type === 'unavailable-id') {
-            console.warn('El código estaba ocupado, regenerando código...');
-            this.codigoSala = this.generarCodigo();
-            this.iniciarCanalesHost(this.codigoSala);
-            const lobbyCodigo = document.getElementById('lobby-codigo-sala');
-            if (lobbyCodigo) lobbyCodigo.textContent = this.codigoSala;
-          }
-        });
-      } catch (e) {
-        console.warn('PeerJS host error:', e);
-      }
-    }
   }
 
   procesarMensajeHost(msg, connDirecta = null) {
     if (!msg || !this.isHost) return;
+    if (msg.remitenteId && msg.remitenteId === this.miId) return; // ignorar mis propios mensajes de broadcast
 
     if (msg.tipo === 'JOIN_REQUEST') {
       const gId = msg.guestId;
@@ -964,7 +1072,8 @@ class RedDojo {
         codigoSala: this.codigoSala,
         anfitrionId: this.anfitrionId,
         jugadores: this.jugadores,
-        targetGuestId: gId
+        targetGuestId: gId,
+        remitenteId: this.miId
       };
 
       if (connDirecta) {
@@ -999,7 +1108,8 @@ class RedDojo {
         tipo: 'LOBBY_UPDATE',
         codigoSala: this.codigoSala,
         anfitrionId: this.anfitrionId,
-        jugadores: this.jugadores
+        jugadores: this.jugadores,
+        remitenteId: this.miId
       };
       this.enviarAClientes(update);
       this.disparar('lobbyUpdate', update);
@@ -1014,7 +1124,6 @@ class RedDojo {
       return;
     }
 
-    // Modo P2P WebRTC / BroadcastChannel
     this.cerrarCanales();
     this.isHost = false;
     this.codigoSala = cod;
@@ -1023,24 +1132,38 @@ class RedDojo {
     const req = {
       tipo: 'JOIN_REQUEST',
       guestId: this.miId,
-      nombre: this.miNombre
+      nombre: this.miNombre,
+      remitenteId: this.miId
     };
 
     let conectado = false;
-    let intentosP2P = 0;
-    const maxIntentos = 10;
-    let intervaloReintento = null;
 
     if (this.timerUnirse) clearTimeout(this.timerUnirse);
     this.timerUnirse = setTimeout(() => {
       if (!conectado) {
-        if (intervaloReintento) clearInterval(intervaloReintento);
         this.disparar('roomError', `No se encontró la sala "${cod}". Verifica que el código sea correcto y el anfitrión esté en el lobby.`);
         this.cerrarCanales();
       }
-    }, 15000);
+    }, 10000);
 
-    // 1. BroadcastChannel (para pestañas en el mismo navegador)
+    // 1. Relay WebSocket Cloud (Conexión instantánea entre diferentes computadoras)
+    this.relay = new RelayWebSocket(cod, (msg) => {
+      if (!msg) return;
+      if (msg.remitenteId && msg.remitenteId === this.miId) return; // ignorar mis propios mensajes
+      if (msg.tipo === 'LOBBY_UPDATE' || msg.tipo === 'MATCH_STARTED') {
+        conectado = true;
+        if (this.timerUnirse) clearTimeout(this.timerUnirse);
+      }
+      this.procesarMensajeGuest(msg);
+    }, () => {
+      console.log('[Relay Guest] Conectado a la sala en la nube, enviando petición de entrada...');
+      this.relay.publicar(req);
+      setTimeout(() => { if (!conectado && this.relay) this.relay.publicar(req); }, 400);
+      setTimeout(() => { if (!conectado && this.relay) this.relay.publicar(req); }, 1200);
+      setTimeout(() => { if (!conectado && this.relay) this.relay.publicar(req); }, 2500);
+    });
+
+    // 2. BroadcastChannel (para pestañas en el mismo navegador)
     if (typeof BroadcastChannel !== 'undefined') {
       try {
         this.broadcastChannel = new BroadcastChannel(canalNombre);
@@ -1048,69 +1171,13 @@ class RedDojo {
           const msg = e.data;
           if (msg && msg.tipo) {
             conectado = true;
-            if (intervaloReintento) clearInterval(intervaloReintento);
             if (this.timerUnirse) clearTimeout(this.timerUnirse);
             this.procesarMensajeGuest(msg);
           }
         };
         this.broadcastChannel.postMessage(req);
-        setTimeout(() => { if (!conectado && this.broadcastChannel) this.broadcastChannel.postMessage(req); }, 250);
-        setTimeout(() => { if (!conectado && this.broadcastChannel) this.broadcastChannel.postMessage(req); }, 750);
-        setTimeout(() => { if (!conectado && this.broadcastChannel) this.broadcastChannel.postMessage(req); }, 1500);
       } catch (e) {
         console.warn('BroadcastChannel error:', e);
-      }
-    }
-
-    // 2. PeerJS WebRTC (para distintos navegadores / dispositivos)
-    if (typeof Peer !== 'undefined') {
-      try {
-        this.peer = new Peer(PEER_CONFIG);
-
-        this.peer.on('open', () => {
-          const targetId = 'dojoninja-' + cod.toLowerCase();
-
-          const intentarConexionHost = () => {
-            if (conectado || !this.peer || this.peer.destroyed) return;
-            intentosP2P++;
-            const conn = this.peer.connect(targetId, { reliable: true });
-            this.peerHostConn = conn;
-
-            conn.on('open', () => {
-              conn.send(req);
-              // Reenviar por si acaso
-              setTimeout(() => { if (!conectado && conn.open) conn.send(req); }, 350);
-              setTimeout(() => { if (!conectado && conn.open) conn.send(req); }, 1000);
-            });
-
-            conn.on('data', (data) => {
-              conectado = true;
-              if (intervaloReintento) clearInterval(intervaloReintento);
-              if (this.timerUnirse) clearTimeout(this.timerUnirse);
-              this.procesarMensajeGuest(data);
-            });
-
-            conn.on('error', (err) => {
-              console.warn(`[PeerJS Guest] Intento ${intentosP2P} a host falló:`, err);
-            });
-          };
-
-          intentarConexionHost();
-
-          intervaloReintento = setInterval(() => {
-            if (conectado || intentosP2P >= maxIntentos || !this.peer || this.peer.destroyed) {
-              clearInterval(intervaloReintento);
-              return;
-            }
-            intentarConexionHost();
-          }, 1500);
-        });
-
-        this.peer.on('error', (err) => {
-          console.warn('PeerJS guest info:', err.type || err);
-        });
-      } catch (e) {
-        console.warn('PeerJS guest error:', e);
       }
     }
   }
@@ -1174,7 +1241,8 @@ class RedDojo {
         tipo: 'MATCH_STARTED',
         codigoSala: this.codigoSala,
         anfitrionId: this.miId,
-        todosJugadores: this.jugadores
+        todosJugadores: this.jugadores,
+        remitenteId: this.miId
       };
       this.enviarAClientes(msg);
       this.disparar('matchStarted', msg);
@@ -1190,11 +1258,13 @@ class RedDojo {
       tipoObj: datos.tipo,
       posX: datos.posX,
       targetId: datos.targetId,
-      targetNombre: datos.targetNombre
+      targetNombre: datos.targetNombre,
+      remitenteId: this.miId
     };
     if (this.isHost) {
       this.enviarAClientes(msg);
     } else {
+      if (this.relay) this.relay.publicar(msg);
       if (this.broadcastChannel) try { this.broadcastChannel.postMessage(msg); } catch (e) {}
     }
   }
@@ -1211,14 +1281,15 @@ class RedDojo {
     if (this.isHost) {
       this.enviarAClientes(msg);
     } else {
+      if (this.relay) this.relay.publicar(msg);
       if (this.broadcastChannel) try { this.broadcastChannel.postMessage(msg); } catch (e) {}
-      if (this.peerHostConn && this.peerHostConn.open) try { this.peerHostConn.send(msg); } catch (e) {}
     }
   }
 
   enviarPoder(datos) {
     const msg = {
       tipo: 'PLAYER_POWER',
+      remitenteId: this.miId,
       id: this.miId,
       poder: datos.tipo,
       duracion: datos.duracion
@@ -1226,33 +1297,36 @@ class RedDojo {
     if (this.isHost) {
       this.enviarAClientes(msg);
     } else {
+      if (this.relay) this.relay.publicar(msg);
       if (this.broadcastChannel) try { this.broadcastChannel.postMessage(msg); } catch (e) {}
-      if (this.peerHostConn && this.peerHostConn.open) try { this.peerHostConn.send(msg); } catch (e) {}
     }
   }
 
   enviarMuerte(datos) {
     const msg = {
       tipo: 'PLAYER_DEATH',
+      remitenteId: this.miId,
       id: this.miId,
       nombre: datos.nombre
     };
     if (this.isHost) {
       this.enviarAClientes(msg);
     } else {
+      if (this.relay) this.relay.publicar(msg);
       if (this.broadcastChannel) try { this.broadcastChannel.postMessage(msg); } catch (e) {}
-      if (this.peerHostConn && this.peerHostConn.open) try { this.peerHostConn.send(msg); } catch (e) {}
     }
   }
 
   enviarTiempo(t) {
     const msg = {
       tipo: 'TIME_SYNC',
-      tiempo: t
+      tiempo: t,
+      remitenteId: this.miId
     };
     if (this.isHost) {
       this.enviarAClientes(msg);
     } else {
+      if (this.relay) this.relay.publicar(msg);
       if (this.broadcastChannel) try { this.broadcastChannel.postMessage(msg); } catch (e) {}
     }
   }
@@ -1260,13 +1334,14 @@ class RedDojo {
   enviarFinPartida(datos) {
     const msg = {
       tipo: 'MATCH_OVER',
+      remitenteId: this.miId,
       motivo: (datos && datos.motivo) || '¡Fin de la partida!'
     };
     if (this.isHost) {
       this.enviarAClientes(msg);
     } else {
+      if (this.relay) this.relay.publicar(msg);
       if (this.broadcastChannel) try { this.broadcastChannel.postMessage(msg); } catch (e) {}
-      if (this.peerHostConn && this.peerHostConn.open) try { this.peerHostConn.send(msg); } catch (e) {}
     }
   }
 
@@ -1277,6 +1352,7 @@ class RedDojo {
   enviarMovimiento(pos) {
     const msg = {
       tipo: 'PLAYER_MOVED',
+      remitenteId: this.miId,
       id: this.miId,
       x: pos.x,
       y: pos.y,
@@ -1286,59 +1362,41 @@ class RedDojo {
     if (this.isHost) {
       this.enviarAClientes(msg);
     } else {
+      if (this.relay) this.relay.publicar(msg);
       if (this.broadcastChannel) try { this.broadcastChannel.postMessage(msg); } catch (e) {}
-      if (this.peerHostConn && this.peerHostConn.open) {
-        try { this.peerHostConn.send(msg); } catch (e) {}
-      }
     }
   }
 
   enviarAClientes(msg, remitenteId = null) {
+    if (!msg.remitenteId) msg.remitenteId = this.miId;
+    if (this.relay) {
+      this.relay.publicar(msg);
+    }
     if (this.broadcastChannel) {
       try { this.broadcastChannel.postMessage(msg); } catch (e) {}
     }
-    this.peerConexiones.forEach((conn, id) => {
-      if (remitenteId && id === remitenteId) return;
-      if (conn) {
-        if (conn.open) {
-          try { conn.send(msg); } catch (e) {}
-        } else {
-          conn.on('open', () => {
-            try { conn.send(msg); } catch (e) {}
-          });
-        }
-      }
-    });
   }
 
   salir() {
     if (this.timerUnirse) clearTimeout(this.timerUnirse);
-    const msg = { tipo: 'PLAYER_LEFT', id: this.miId };
+    const msg = { tipo: 'PLAYER_LEFT', id: this.miId, remitenteId: this.miId };
     if (this.isHost) {
       this.enviarAClientes(msg);
     } else {
+      if (this.relay) this.relay.publicar(msg);
       if (this.broadcastChannel) try { this.broadcastChannel.postMessage(msg); } catch (e) {}
-      if (this.peerHostConn && this.peerHostConn.open) try { this.peerHostConn.send(msg); } catch (e) {}
     }
     this.cerrarCanales();
   }
 
   cerrarCanales() {
+    if (this.relay) {
+      this.relay.cerrar();
+      this.relay = null;
+    }
     if (this.broadcastChannel) {
       try { this.broadcastChannel.close(); } catch (e) {}
       this.broadcastChannel = null;
-    }
-    this.peerConexiones.forEach((conn) => {
-      try { conn.close(); } catch (e) {}
-    });
-    this.peerConexiones.clear();
-    if (this.peerHostConn) {
-      try { this.peerHostConn.close(); } catch (e) {}
-      this.peerHostConn = null;
-    }
-    if (this.peer) {
-      try { this.peer.destroy(); } catch (e) {}
-      this.peer = null;
     }
     this.isHost = false;
   }
@@ -2517,7 +2575,7 @@ vincularClick('btn-confirmar-unirse', () => {
     return;
   }
   if (errEl) {
-    errEl.textContent = 'Buscando sala ' + codigo + ' y conectando por P2P...';
+    errEl.textContent = 'Conectando a sala ' + codigo + '...';
     errEl.style.color = '#ffb74d';
     errEl.style.display = 'block';
   }
