@@ -145,9 +145,11 @@
 
       <div style="margin-top: 10px; text-align: left;">
         <span style="font-size: 12px; color: #bbb;">Compartir en redes sociales:</span>
-        <div style="display: flex; gap: 8px; margin-top: 4px;">
-          <button class="btn btn-red-social" id="btn-share-whatsapp" style="flex: 1; padding: 8px;">WhatsApp</button>
-          <button class="btn btn-twitter" id="btn-share-twitter" style="flex: 1; padding: 8px;">Twitter / X</button>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 4px;">
+          <button class="btn btn-red-social" id="btn-share-whatsapp" style="padding: 8px; font-size: 11px;">WhatsApp</button>
+          <button class="btn btn-twitter" id="btn-share-twitter" style="padding: 8px; font-size: 11px;">Twitter / X</button>
+          <button class="btn btn-facebook" id="btn-share-facebook" style="padding: 8px; font-size: 11px;">Facebook</button>
+          <button class="btn btn-instagram" id="btn-share-instagram" style="padding: 8px; font-size: 11px;">Instagram</button>
         </div>
       </div>
 
@@ -175,7 +177,12 @@
         <div id="gameover-puntos" style="font-size: 32px; font-weight: bold; color: #ffb74d;">0</div>
         <div id="gameover-stats" style="font-size: 12px; color: #bbb; margin-top: 4px;">0 esquivados</div>
       </div>
-      <button id="btn-gameover-whatsapp" class="btn btn-red-social">Compartir mi récord en WhatsApp</button>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px;">
+        <button id="btn-gameover-whatsapp" class="btn btn-red-social" style="padding: 8px; font-size: 11px;">WhatsApp</button>
+        <button id="btn-gameover-twitter" class="btn btn-twitter" style="padding: 8px; font-size: 11px;">Twitter / X</button>
+        <button id="btn-gameover-facebook" class="btn btn-facebook" style="padding: 8px; font-size: 11px;">Facebook</button>
+        <button id="btn-gameover-instagram" class="btn btn-instagram" style="padding: 8px; font-size: 11px;">Instagram</button>
+      </div>
       <button id="btn-reintentar" class="btn btn-verde" style="margin-top: 6px;">Jugar de Nuevo</button>
       <button id="btn-gameover-salir" class="btn btn-rojo">Salir al Menú</button>
     </div>

@@ -306,3 +306,17 @@
       border: 1px solid #1da1f2;
       color: #1da1f2;
     }
+.btn-facebook {
+  background: #1877f2 !important;
+  color: white !important;
+}
+.btn-facebook:hover {
+  background: #145dbf !important;
+}
+.btn-instagram {
+  background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888) !important;
+  color: white !important;
+}
+.btn-instagram:hover {
+  opacity: 0.9;
+}
