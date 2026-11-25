@@ -15,27 +15,57 @@ app.use(express.static(path.join(__dirname, '..')));
 // ==========================================
 // 1. SERVICIO WEB (API REST SIMPLE - RÚBRICA REQ 7)
 // ==========================================
-let puntuaciones = [
-  { nombre: 'Juan', puntos: 120, dificultad: 'Facil', escenario: 'Dia' },
-  { nombre: 'Maria', puntos: 90, dificultad: 'Dificil', escenario: 'Noche' },
-  { nombre: 'Pedro', puntos: 50, dificultad: 'Facil', escenario: 'Lava' }
+const DB_LOCAL_FILE = path.join(__dirname, 'puntuaciones_db.json');
+const DEFAULT_SCORES_SRV = [
+  { nombre: 'Sensei Ryu', puntos: 520, dificultad: 'Dificil', escenario: 'Noche' },
+  { nombre: 'Kunoichi Sakura', puntos: 430, dificultad: 'Dificil', escenario: 'Lava' },
+  { nombre: 'Shadow Shinobi', puntos: 350, dificultad: 'Facil', escenario: 'Dia' }
 ];
+
+function cargarPuntServidor() {
+  const fs = require('fs');
+  try {
+    if (fs.existsSync(DB_LOCAL_FILE)) {
+      const data = JSON.parse(fs.readFileSync(DB_LOCAL_FILE, 'utf8'));
+      if (Array.isArray(data) && data.length > 0) return data;
+    }
+  } catch (e) {}
+  return [...DEFAULT_SCORES_SRV];
+}
+
+function guardarPuntServidor(lista) {
+  const fs = require('fs');
+  try {
+    fs.writeFileSync(DB_LOCAL_FILE, JSON.stringify(lista.slice(0, 50), null, 2), 'utf8');
+  } catch (e) {}
+}
+
+let puntuaciones = cargarPuntServidor();
 
 // GET: Consultar puntuaciones (Servicio Web)
 app.get('/api/puntuaciones', (req, res) => {
+  puntuaciones = cargarPuntServidor();
   res.json(puntuaciones);
 });
 
 // POST: Guardar nueva puntuacion (Servicio Web)
 app.post('/api/puntuaciones', (req, res) => {
+  puntuaciones = cargarPuntServidor();
   const nueva = {
     nombre: req.body.nombre || 'Anonimo',
     puntos: Number(req.body.puntos) || 0,
     dificultad: req.body.dificultad || 'Facil',
-    escenario: req.body.escenario || 'Dia'
+    escenario: req.body.escenario || 'Dia',
+    fecha: req.body.fecha || Date.now()
   };
   puntuaciones.push(nueva);
-  puntuaciones.sort((a, b) => b.puntos - a.puntos);
+  const mapa = new Map();
+  puntuaciones.forEach(item => {
+    const k = `${item.nombre}_${item.puntos}_${item.dificultad}`;
+    if (!mapa.has(k)) mapa.set(k, item);
+  });
+  puntuaciones = Array.from(mapa.values()).sort((a, b) => b.puntos - a.puntos).slice(0, 50);
+  guardarPuntServidor(puntuaciones);
   res.json({ ok: true, mensaje: 'Guardado con exito' });
 });
 

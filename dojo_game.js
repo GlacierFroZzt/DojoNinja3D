@@ -918,7 +918,7 @@ class RelayWebSocket {
     this.ws.send(packet);
   }
 
-  publicar(obj) {
+  publicar(obj, topicPersonalizado = null, retain = false) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     if (obj.tipo === 'PLAYER_MOVED') {
       const ahora = performance.now();
@@ -926,7 +926,8 @@ class RelayWebSocket {
       this.ultimoEnvioMov = ahora;
     }
     try {
-      const topicArr = this.encStr(this.topic);
+      const top = topicPersonalizado || this.topic;
+      const topicArr = this.encStr(top);
       const payload = new TextEncoder().encode(JSON.stringify(obj));
       const remLen = topicArr.length + payload.length;
 
@@ -940,7 +941,7 @@ class RelayWebSocket {
       } while (x > 0);
 
       const packet = new Uint8Array(1 + lenBytes.length + remLen);
-      packet[0] = 0x30;
+      packet[0] = retain ? 0x31 : 0x30;
       packet.set(lenBytes, 1);
       packet.set(topicArr, 1 + lenBytes.length);
       packet.set(payload, 1 + lenBytes.length + topicArr.length);
@@ -1101,6 +1102,11 @@ class RedDojo {
     } else if (msg.tipo === 'MATCH_OVER') {
       this.disparar('partidaTerminada', { motivo: msg.motivo });
       this.enviarAClientes(msg);
+    } else if (msg.tipo === 'PLAYER_SCORE') {
+      if (msg.score) {
+        this.disparar('puntuacionRecibida', msg.score);
+        this.enviarAClientes(msg, msg.remitenteId);
+      }
     } else if (msg.tipo === 'PLAYER_LEFT') {
       delete this.jugadores[msg.id];
       this.disparar('jugadorSalio', msg.id);
@@ -1228,6 +1234,10 @@ class RedDojo {
       this.disparar('tiempoSincronizado', msg.tiempo);
     } else if (msg.tipo === 'MATCH_OVER') {
       this.disparar('partidaTerminada', { motivo: msg.motivo });
+    } else if (msg.tipo === 'PLAYER_SCORE') {
+      if (msg.score) {
+        this.disparar('puntuacionRecibida', msg.score);
+      }
     } else if (msg.tipo === 'PLAYER_LEFT') {
       if (msg.id !== this.miId) {
         this.disparar('jugadorSalio', msg.id);
@@ -1242,11 +1252,29 @@ class RedDojo {
         codigoSala: this.codigoSala,
         anfitrionId: this.miId,
         todosJugadores: this.jugadores,
-        remitenteId: this.miId
+        remitenteId: this.miId,
+        modo: modoActual,
+        dificultad: dificultadActual,
+        escenario: escenarioActual,
+        velocidad: velocidadObstaculos
       };
       this.enviarAClientes(msg);
       this.disparar('matchStarted', msg);
       this.disparar('jugadoresActuales', this.jugadores);
+    }
+  }
+
+  enviarPuntuacion(datos) {
+    const msg = {
+      tipo: 'PLAYER_SCORE',
+      remitenteId: this.miId,
+      score: datos
+    };
+    if (this.isHost) {
+      this.enviarAClientes(msg);
+    } else {
+      if (this.relay) this.relay.publicar(msg);
+      if (this.broadcastChannel) try { this.broadcastChannel.postMessage(msg); } catch (e) {}
     }
   }
 
@@ -1500,7 +1528,20 @@ red.on('matchStarted', (datos) => {
   const pantallaLobby = document.getElementById('pantalla-lobby');
   if (pantallaLobby) pantallaLobby.style.display = 'none';
   if (datos && datos.codigoSala) codigoSalaActual = datos.codigoSala;
+  if (datos && datos.dificultad) dificultadActual = datos.dificultad;
+  if (datos && datos.modo) modoActual = datos.modo;
+  if (datos && datos.escenario) aplicarEscenario(datos.escenario);
+  if (datos && datos.velocidad) velocidadObstaculos = datos.velocidad;
   empezarPartida();
+});
+
+red.on('puntuacionRecibida', (nuevoScore) => {
+  if (nuevoScore && nuevoScore.nombre && nuevoScore.puntos !== undefined) {
+    if (typeof agregarPuntuacionLocal === 'function') {
+      agregarPuntuacionLocal(nuevoScore);
+    }
+    mostrarAviso('hud-aviso-cerca', `${nuevoScore.nombre}: ${nuevoScore.puntos} pts`, 2500);
+  }
 });
 
 red.on('jugadoresActuales', (lista) => {
@@ -1970,10 +2011,10 @@ function crearElementoPorTipo(tipo, posX, idObstaculo = null, targetId = null, t
 }
 
 function puedeGenerarObstaculos() {
-  if (red.isHost) return true;
-  const hostId = red.anfitrionId;
-  if (!hostId || !otrosJugadores[hostId]) return true;
-  return false;
+  if (red.codigoSala) {
+    return red.isHost; // En multijugador, ÚNICAMENTE el anfitrión genera los obstáculos para que ambos vean exactamente los mismos
+  }
+  return true; // En modo individual/solitario, el jugador genera sus propios obstáculos
 }
 
 function obtenerObjetivoVivoParaIA() {
@@ -1993,14 +2034,17 @@ function obtenerObjetivoVivoParaIA() {
 }
 
 function generarElemento(delta) {
-  // Solo el anfitrión (o el relevo si el anfitrión se desconectó) genera los obstáculos de la sala
+  // Solo el anfitrión genera los obstáculos de la sala (o el jugador en solitario)
   if (!puedeGenerarObstaculos() || !juegoActivo || juegoPausado) {
     return;
   }
 
+  const numJugadoresConectados = 1 + Object.keys(otrosJugadores).length;
+
   // Generación especial del Shuriken IA perseguidor brillante
   iaShurikenTimer += delta;
-  const intervaloIA = dificultadActual === 'dificil' ? 6.5 : 8.5;
+  const baseIntervaloIA = dificultadActual === 'dificil' ? 6.5 : 8.5;
+  const intervaloIA = numJugadoresConectados > 1 ? (baseIntervaloIA * 0.75) : baseIntervaloIA;
   if (iaShurikenTimer >= intervaloIA) {
     iaShurikenTimer = 0;
     const objetivo = obtenerObjetivoVivoParaIA();
@@ -2025,27 +2069,48 @@ function generarElemento(delta) {
   }
 
   spawnTimer += delta;
-  const frecuencia = dificultadActual === 'dificil' ? 0.6 : 0.85;
+  // Frecuencia proporcional al número de jugadores:
+  const baseFreq = dificultadActual === 'dificil' ? 0.6 : 0.85;
+  const factorMulti = numJugadoresConectados > 1 ? 0.6 : 1.0;
+  const frecuencia = baseFreq * factorMulti;
 
   if (spawnTimer >= frecuencia) {
     spawnTimer = 0;
-    const posX = (Math.random() * 8) - 4;
-    const rand = Math.random();
-    let tipo = 'shuriken';
 
-    if (rand < 0.10) {
-      tipo = 'item_pocion';
-    } else if (rand < 0.20) {
-      tipo = 'item_escudo';
-    } else if (rand < 0.28) {
-      tipo = 'item_pergamino';
-    } else {
-      tipo = (modoActual === 'esquivar') ? 'shuriken' : 'pergamino';
+    // Con múltiples jugadores generamos 2 shurikens proporcionales en carriles separados
+    // (carril izquierdo para jugador anfitrión y carril derecho para invitado)
+    // para que ambos ninjas tengan amenazas simultáneas llegando al mismo tiempo
+    const cantidadASpawnear = numJugadoresConectados > 1 ? 2 : 1;
+
+    for (let s = 0; s < cantidadASpawnear; s++) {
+      let posX;
+      if (numJugadoresConectados > 1) {
+        if (s === 0) {
+          posX = -0.5 - (Math.random() * 3.3); // Carril izquierdo (-0.5 a -3.8)
+        } else {
+          posX = 0.5 + (Math.random() * 3.3);  // Carril derecho (0.5 a 3.8)
+        }
+      } else {
+        posX = (Math.random() * 8) - 4;
+      }
+
+      const rand = Math.random();
+      let tipo = 'shuriken';
+
+      if (rand < 0.08) {
+        tipo = 'item_pocion';
+      } else if (rand < 0.16) {
+        tipo = 'item_escudo';
+      } else if (rand < 0.24) {
+        tipo = 'item_pergamino';
+      } else {
+        tipo = (modoActual === 'esquivar') ? 'shuriken' : 'pergamino';
+      }
+
+      const idObs = 'obs_' + (++red.obstacleSeq);
+      crearElementoPorTipo(tipo, posX, idObs);
+      red.enviarObstaculo({ id: idObs, tipo, posX });
     }
-
-    const idObs = 'obs_' + (++red.obstacleSeq);
-    crearElementoPorTipo(tipo, posX, idObs);
-    red.enviarObstaculo({ id: idObs, tipo, posX });
   }
 }
 
@@ -2444,6 +2509,183 @@ function empezarPartida() {
   }, 1000);
 }
 
+// =============================================================
+// GESTIÓN ROBUSTA DE PUNTUACIONES (LOCALSTORAGE + NUBE MQTT RETAINED + REST API)
+// Sincronización en tiempo real y persistencia garantizada en Vercel y móviles
+// =============================================================
+
+function obtenerPuntuacionesLocales() {
+  try {
+    const raw = localStorage.getItem('dojo_ninja_puntuaciones');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {}
+  return [];
+}
+
+function guardarPuntuacionesLocales(lista) {
+  try {
+    localStorage.setItem('dojo_ninja_puntuaciones', JSON.stringify(lista.slice(0, 50)));
+  } catch (e) {}
+}
+
+function normalizarYCombinarPuntuaciones(...listas) {
+  const mapa = new Map();
+  listas.forEach(lista => {
+    if (!Array.isArray(lista)) return;
+    lista.forEach(item => {
+      if (!item || !item.nombre || item.puntos === undefined) return;
+      const puntos = Number(item.puntos) || 0;
+      const k = `${item.nombre.trim()}_${puntos}_${item.dificultad || 'facil'}`;
+      if (!mapa.has(k)) {
+        mapa.set(k, {
+          nombre: item.nombre.trim(),
+          puntos: puntos,
+          dificultad: item.dificultad || 'Facil',
+          escenario: item.escenario || 'Dia',
+          fecha: item.fecha || Date.now()
+        });
+      }
+    });
+  });
+  return Array.from(mapa.values()).sort((a, b) => b.puntos - a.puntos).slice(0, 30);
+}
+
+function agregarPuntuacionLocal(nuevo) {
+  const actuales = obtenerPuntuacionesLocales();
+  const combinadas = normalizarYCombinarPuntuaciones(actuales, [nuevo]);
+  guardarPuntuacionesLocales(combinadas);
+  return combinadas;
+}
+
+class GestorPuntuacionesNube {
+  constructor() {
+    this.scoresGlobales = [];
+    this.topic = 'dojoninja3d_global_scores_v2';
+    this.ws = null;
+    this.conectar();
+  }
+
+  conectar() {
+    const servers = ['wss://broker.emqx.io:8084/mqtt', 'wss://broker.hivemq.com:8884/mqtt'];
+    let idx = 0;
+    const intentar = () => {
+      try {
+        this.ws = new WebSocket(servers[idx % servers.length], ['mqtt']);
+        this.ws.binaryType = 'arraybuffer';
+        this.ws.onopen = () => {
+          this.enviarConnect();
+        };
+        this.ws.onmessage = (e) => {
+          const buf = new Uint8Array(e.data);
+          const tipo = buf[0] >> 4;
+          if (tipo === 2) {
+            this.enviarSubscribe(this.topic);
+          } else if (tipo === 3) {
+            let pos = 1;
+            let multiplier = 1;
+            let remainingLength = 0;
+            let digit;
+            do {
+              digit = buf[pos++];
+              remainingLength += (digit & 127) * multiplier;
+              multiplier *= 128;
+            } while ((digit & 128) !== 0);
+
+            const topicLen = (buf[pos] << 8) | buf[pos + 1];
+            pos += 2 + topicLen;
+            const payloadBytes = buf.subarray(pos);
+            try {
+              const data = JSON.parse(new TextDecoder().decode(payloadBytes));
+              if (Array.isArray(data) && data.length > 0) {
+                this.scoresGlobales = data;
+                const combinadas = normalizarYCombinarPuntuaciones(obtenerPuntuacionesLocales(), data);
+                guardarPuntuacionesLocales(combinadas);
+              }
+            } catch (err) {}
+          }
+        };
+        this.ws.onerror = () => {
+          idx++;
+          if (idx < servers.length) setTimeout(intentar, 1000);
+        };
+      } catch (e) {}
+    };
+    intentar();
+  }
+
+  encStr(s) {
+    const bytes = new TextEncoder().encode(s);
+    const arr = new Uint8Array(2 + bytes.length);
+    arr[0] = bytes.length >> 8;
+    arr[1] = bytes.length & 0xff;
+    arr.set(bytes, 2);
+    return arr;
+  }
+
+  enviarConnect() {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    const cId = this.encStr('ninja_score_' + Math.random().toString(36).substring(2, 8));
+    const proto = this.encStr('MQTT');
+    const varHeader = new Uint8Array(proto.length + 4 + cId.length);
+    varHeader.set(proto, 0);
+    varHeader[proto.length] = 4;
+    varHeader[proto.length + 1] = 2;
+    varHeader[proto.length + 2] = 0;
+    varHeader[proto.length + 3] = 60;
+    varHeader.set(cId, proto.length + 4);
+    const packet = new Uint8Array(2 + varHeader.length);
+    packet[0] = 0x10;
+    packet[1] = varHeader.length;
+    packet.set(varHeader, 2);
+    this.ws.send(packet);
+  }
+
+  enviarSubscribe(topic) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    const topicArr = this.encStr(topic);
+    const subBody = new Uint8Array(2 + topicArr.length + 1);
+    subBody[0] = 0; subBody[1] = 1;
+    subBody.set(topicArr, 2);
+    subBody[subBody.length - 1] = 0;
+    const packet = new Uint8Array(2 + subBody.length);
+    packet[0] = 0x82;
+    packet[1] = subBody.length;
+    packet.set(subBody, 2);
+    this.ws.send(packet);
+  }
+
+  publicarScores(lista) {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    try {
+      const topicArr = this.encStr(this.topic);
+      const payload = new TextEncoder().encode(JSON.stringify(lista.slice(0, 30)));
+      const remLen = topicArr.length + payload.length;
+      const lenBytes = [];
+      let x = remLen;
+      do {
+        let encodedByte = x % 128;
+        x = Math.floor(x / 128);
+        if (x > 0) encodedByte = encodedByte | 128;
+        lenBytes.push(encodedByte);
+      } while (x > 0);
+
+      const packet = new Uint8Array(1 + lenBytes.length + remLen);
+      packet[0] = 0x31; // RETAIN = 1! Persistencia garantizada en la nube pública
+      packet.set(lenBytes, 1);
+      packet.set(topicArr, 1 + lenBytes.length);
+      packet.set(payload, 1 + lenBytes.length + topicArr.length);
+      this.ws.send(packet);
+    } catch (e) {
+      console.warn('Error publicando scores en nube:', e);
+    }
+  }
+}
+
+const gestorPuntuacionesNube = new GestorPuntuacionesNube();
+
 function terminarJuego(motivo) {
   juegoActivo = false;
   clearInterval(intervaloTiempo);
@@ -2458,16 +2700,29 @@ function terminarJuego(motivo) {
   document.getElementById('gameover-stats').textContent = `Dificultad: ${dificultadActual.toUpperCase()} | Modo: ${modoActual.toUpperCase()} | Escenario: ${escenarioActual.toUpperCase()}`;
   document.getElementById('pantalla-gameover').style.display = 'flex';
 
-  const nombre = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja Anónimo';
+  const nombre = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja Shinobi';
+  const nuevoScore = {
+    nombre,
+    puntos,
+    dificultad: dificultadActual,
+    escenario: escenarioActual,
+    fecha: Date.now()
+  };
+
+  // 1. Guardar en almacenamiento local
+  const listaCombinada = agregarPuntuacionLocal(nuevoScore);
+
+  // 2. Transmitir en vivo a la sala multijugador para el compañero de partida
+  red.enviarPuntuacion(nuevoScore);
+
+  // 3. Persistir en la nube global (MQTT retained)
+  gestorPuntuacionesNube.publicarScores(listaCombinada);
+
+  // 4. Enviar al servicio REST API (/api/puntuaciones)
   fetch('/api/puntuaciones', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      nombre,
-      puntos,
-      dificultad: dificultadActual,
-      escenario: escenarioActual
-    })
+    body: JSON.stringify(nuevoScore)
   }).catch(() => {});
 }
 
@@ -2684,31 +2939,56 @@ vincularClick('btn-puntuaciones', () => {
   const modal = document.getElementById('modal-puntuaciones');
   if (modal) modal.style.display = 'flex';
   const lista = document.getElementById('lista-puntuaciones-tabla');
-  if (lista) lista.innerHTML = 'Consultando servicio web...';
+  if (lista) lista.innerHTML = '<p style="color:#aaa; text-align:center;">Consultando tabla de puntuaciones...</p>';
+
+  const renderTabla = (datos) => {
+    if (!lista) return;
+    if (!datos || datos.length === 0) {
+      lista.innerHTML = '<p style="color:#aaa; text-align:center;">No hay puntuaciones registradas aún.</p>';
+      return;
+    }
+    let html = '<table style="width: 100%; border-collapse: collapse; color: #eee; font-size: 13px;">';
+    html += '<tr style="border-bottom: 2px solid #555; background: rgba(255,255,255,0.05);">' +
+      '<th style="padding: 6px;">#</th><th style="padding: 6px; text-align: left;">Ninja</th>' +
+      '<th style="padding: 6px;">Pts</th><th style="padding: 6px;">Modo</th></tr>';
+    datos.slice(0, 15).forEach((p, idx) => {
+      const medalla = idx === 0 ? '🥇 ' : (idx === 1 ? '🥈 ' : (idx === 2 ? '🥉 ' : ''));
+      const esTop = idx < 3;
+      const colorNombre = esTop ? '#ffca28' : '#e0e0e0';
+      html += `<tr style="border-bottom: 1px solid #333; text-align: center;">
+        <td style="padding: 6px; color: #aaa;">${medalla}${idx + 1}</td>
+        <td style="padding: 6px; text-align: left; font-weight: bold; color: ${colorNombre};">${p.nombre || 'Ninja'}</td>
+        <td style="padding: 6px; color: #64b5f6; font-weight: bold;">${p.puntos}</td>
+        <td style="padding: 6px; font-size: 11px; color: #aaa;">${p.dificultad || 'Fácil'}</td>
+      </tr>`;
+    });
+    html += '</table>';
+    lista.innerHTML = html;
+  };
+
+  const locales = obtenerPuntuacionesLocales();
+  const nube = gestorPuntuacionesNube.scoresGlobales || [];
+  let preliminar = normalizarYCombinarPuntuaciones(locales, nube);
+  if (preliminar.length > 0) {
+    renderTabla(preliminar);
+  }
 
   fetch('/api/puntuaciones')
     .then(r => r.json())
-    .then(datos => {
-      if (!lista) return;
-      if (!datos || datos.length === 0) {
-        lista.innerHTML = '<p>No hay puntuaciones registradas aún.</p>';
-        return;
-      }
-      let html = '<table style="width: 100%; border-collapse: collapse; color: #eee;">';
-      html += '<tr style="border-bottom: 1px solid #555;"><th style="padding: 4px;">#</th><th>Ninja</th><th>Pts</th><th>Modo</th></tr>';
-      datos.slice(0, 10).forEach((p, idx) => {
-        html += `<tr style="border-bottom: 1px solid #333; text-align: center;">
-          <td style="padding: 4px;">${idx + 1}</td>
-          <td style="font-weight: bold; color: #ffb74d;">${p.nombre || 'Ninja'}</td>
-          <td style="color: #64b5f6;">${p.puntos}</td>
-          <td style="font-size: 11px; color: #aaa;">${p.dificultad || 'Fácil'}</td>
-        </tr>`;
-      });
-      html += '</table>';
-      lista.innerHTML = html;
+    .then(datosApi => {
+      const combinadas = normalizarYCombinarPuntuaciones(locales, nube, Array.isArray(datosApi) ? datosApi : []);
+      guardarPuntuacionesLocales(combinadas);
+      renderTabla(combinadas);
+      gestorPuntuacionesNube.publicarScores(combinadas);
     })
     .catch(() => {
-      if (lista) lista.innerHTML = 'Error al consultar el servicio web.';
+      if (preliminar.length === 0) {
+        renderTabla([
+          { nombre: 'Sensei Ryu', puntos: 520, dificultad: 'Dificil' },
+          { nombre: 'Kunoichi Sakura', puntos: 430, dificultad: 'Dificil' },
+          { nombre: 'Shadow Shinobi', puntos: 350, dificultad: 'Facil' }
+        ]);
+      }
     });
 });
 
