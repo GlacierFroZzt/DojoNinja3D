@@ -1631,9 +1631,9 @@ red.on('obstaculoGenerado', (datos) => {
 
     if (datos.tipo === 'shuriken_ia') {
       if (datos.targetId === red.miId) {
-        mostrarAviso('hud-aviso-cerca', '¡SHURIKEN IA TE PERSIGUE! ¡PARRY OBLIGATORIO!', 2600);
+        mostrarAviso('hud-aviso-cerca', '¡SHURIKEN CARMESÍ TE PERSIGUE! ¡PARRY OBLIGATORIO!', 2600);
       } else if (datos.targetNombre) {
-        mostrarAviso('hud-aviso-cerca', `Shuriken IA persigue a ${datos.targetNombre}`, 2200);
+        mostrarAviso('hud-aviso-cerca', `Shuriken Carmesí persigue a ${datos.targetNombre}`, 2200);
       }
     }
   }
@@ -1654,7 +1654,7 @@ red.on('impactoObstaculo', (datos) => {
   } else if (datos.tipo === 'parry_ia') {
     particulas.emitir(posImpacto, 0xffd700, 50);
     audio.playParry();
-    mostrarAviso('hud-aviso-parry', '¡ALIADO PARREÓ AL SHURIKEN IA!', 1300);
+    mostrarAviso('hud-aviso-parry', '¡ALIADO PARREÓ AL SHURIKEN CARMESÍ!', 1300);
   } else if (datos.tipo === 'golpe_ia') {
     particulas.emitir(posImpacto, 0xff1744, 40);
     audio.playGolpe();
@@ -1822,14 +1822,14 @@ function crearShurikenMesh() {
 }
 
 // =============================================================
-// SHURIKEN CON INTELIGENCIA ARTIFICIAL (IA PERSEGUIDORA QUE BRITLLA)
-// Cumple: "La IA sea un shuriken que brilla, que seleccione a un jugador y lo tenga que parrear sí o sí"
+// SHURIKEN CARMESÍ PERSEGUIDOR (PROYECTIL INCANDESCENTE TELEDIRIGIDO)
+// Mecánica de persecución y parry obligatorio
 // =============================================================
 function crearShurikenIAMesh(targetNombre = '') {
   const g = new THREE.Group();
 
   // Material brillante incandescente con emisión de luz roja / carmesí
-  const matMetalIA = new THREE.MeshStandardMaterial({
+  const matMetalCarmesi = new THREE.MeshStandardMaterial({
     color: 0xff1744,
     emissive: 0xff1744,
     emissiveIntensity: 1.6,
@@ -1843,16 +1843,16 @@ function crearShurikenIAMesh(targetNombre = '') {
     shurikenMesh.rotation.set(Math.PI / 2, 0, 0);
     shurikenMesh.traverse((child) => {
       if (child.isMesh) {
-        child.material = matMetalIA;
+        child.material = matMetalCarmesi;
       }
     });
   } else {
     shurikenMesh = new THREE.Group();
-    const centro = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.1, 10), matMetalIA);
+    const centro = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.1, 10), matMetalCarmesi);
     centro.rotation.x = Math.PI / 2;
     shurikenMesh.add(centro);
     for (let i = 0; i < 4; i++) {
-      const hoja = new THREE.Mesh(new THREE.ConeGeometry(0.35, 1.05, 4), matMetalIA);
+      const hoja = new THREE.Mesh(new THREE.ConeGeometry(0.35, 1.05, 4), matMetalCarmesi);
       const ang = (i * Math.PI) / 2;
       hoja.position.set(Math.cos(ang) * 0.8, Math.sin(ang) * 0.8, 0);
       hoja.rotation.z = ang - Math.PI / 2;
@@ -1863,11 +1863,11 @@ function crearShurikenIAMesh(targetNombre = '') {
   g.shurikenMesh = shurikenMesh;
 
   // Luz dinámica propia que ilumina la pista en tiempo real
-  const luzIA = new THREE.PointLight(0xff1744, 3.8, 9);
-  luzIA.position.set(0, 0.2, 0);
-  g.add(luzIA);
+  const luzCarmesi = new THREE.PointLight(0xff1744, 3.8, 9);
+  luzCarmesi.position.set(0, 0.2, 0);
+  g.add(luzCarmesi);
 
-  // Etiqueta flotante holográfica sobre el shuriken IA
+  // Etiqueta flotante holográfica sobre el shuriken perseguidor
   const canvasEtiqueta = document.createElement('canvas');
   canvasEtiqueta.width = 320; canvasEtiqueta.height = 64;
   const ctx = canvasEtiqueta.getContext('2d');
@@ -1880,7 +1880,7 @@ function crearShurikenIAMesh(targetNombre = '') {
   ctx.font = 'bold 19px Arial';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const textoTag = targetNombre ? `IA -> ${targetNombre}` : 'SHURIKEN IA';
+  const textoTag = targetNombre ? `🎯 -> ${targetNombre}` : 'SHURIKEN CARMESÍ';
   ctx.fillText(textoTag, 160, 32);
 
   const spriteTag = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -2041,16 +2041,16 @@ function generarElemento(delta) {
 
   const numJugadoresConectados = 1 + Object.keys(otrosJugadores).length;
 
-  // Generación especial del Shuriken IA perseguidor brillante
+  // Generación especial del Shuriken Carmesí perseguidor brillante
   iaShurikenTimer += delta;
-  const baseIntervaloIA = dificultadActual === 'dificil' ? 6.5 : 8.5;
-  const intervaloIA = numJugadoresConectados > 1 ? (baseIntervaloIA * 0.75) : baseIntervaloIA;
-  if (iaShurikenTimer >= intervaloIA) {
+  const baseIntervaloPerseguidor = dificultadActual === 'dificil' ? 6.5 : 8.5;
+  const intervaloPerseguidor = numJugadoresConectados > 1 ? (baseIntervaloPerseguidor * 0.75) : baseIntervaloPerseguidor;
+  if (iaShurikenTimer >= intervaloPerseguidor) {
     iaShurikenTimer = 0;
     const objetivo = obtenerObjetivoVivoParaIA();
     if (objetivo) {
       const posX = (Math.random() * 6) - 3;
-      const idObs = 'obs_ia_' + (++red.obstacleSeq);
+      const idObs = 'obs_carmesi_' + (++red.obstacleSeq);
       crearElementoPorTipo('shuriken_ia', posX, idObs, objetivo.id, objetivo.nombre);
       red.enviarObstaculo({
         id: idObs,
@@ -2061,9 +2061,9 @@ function generarElemento(delta) {
       });
 
       if (objetivo.id === red.miId) {
-        mostrarAviso('hud-aviso-cerca', '¡SHURIKEN IA TE PERSIGUE! ¡PARRY OBLIGATORIO!', 2600);
+        mostrarAviso('hud-aviso-cerca', '¡SHURIKEN CARMESÍ TE PERSIGUE! ¡PARRY OBLIGATORIO!', 2600);
       } else {
-        mostrarAviso('hud-aviso-cerca', `Shuriken IA persigue a ${objetivo.nombre}`, 2200);
+        mostrarAviso('hud-aviso-cerca', `Shuriken Carmesí persigue a ${objetivo.nombre}`, 2200);
       }
     }
   }
@@ -2188,10 +2188,10 @@ function procesarColisiones() {
           puntos += 300;
           audio.playParry();
           particulas.emitir(localPos, 0xffd700, 50);
-          mostrarAviso('hud-aviso-parry', '¡PARRY A LA IA PERFECTO! +300', 1400);
+          mostrarAviso('hud-aviso-parry', '¡PARRY PERFECTO AL SHURIKEN! +300', 1400);
           red.enviarImpactoObstaculo({ id: obj.idObstaculo, tipo: 'parry_ia', x: obj.position.x, z: obj.position.z });
         } else {
-          // El shuriken IA se DEBÍA parrear sí o sí: rompe el escudo si lo tenía, o quita vida
+          // El shuriken perseguidor se DEBÍA parrear sí o sí: rompe el escudo si lo tenía, o quita vida
           if (conEscudo) {
             jugador.escudoTimer = 0;
             if (jugador.escudoMesh) jugador.escudoMesh.visible = false;
@@ -2205,7 +2205,7 @@ function procesarColisiones() {
             particulas.emitir(localPos, 0xff1744, 45);
             flashImpacto();
             actualizarHUD();
-            mostrarAviso('hud-aviso-cerca', '¡FALLASTE EL PARRY A LA IA!', 1800);
+            mostrarAviso('hud-aviso-cerca', '¡FALLASTE EL PARRY OBLIGATORIO!', 1800);
           }
           red.enviarImpactoObstaculo({ id: obj.idObstaculo, tipo: 'golpe_ia', x: obj.position.x, z: obj.position.z });
           if (vidas <= 0) {
@@ -2354,7 +2354,7 @@ function animate() {
           particulas.emitir(obs.position, 0xff1744, 2);
         }
 
-        // INTELIGENCIA ARTIFICIAL: Persecución activa del objetivo asignado
+        // Persecución activa del objetivo asignado
         let targetNinja = null;
         if (obs.targetId === red.miId) {
           if (!jugador.estaMuerto) targetNinja = jugador;
@@ -2362,7 +2362,7 @@ function animate() {
           if (!otrosJugadores[obs.targetId].estaMuerto) targetNinja = otrosJugadores[obs.targetId];
         }
 
-        // Si el objetivo cayó, reorientar la IA al ninja sobreviviente
+        // Si el objetivo cayó, reorientar el proyectil al ninja sobreviviente
         if (!targetNinja) {
           if (!jugador.estaMuerto) {
             targetNinja = jugador;
@@ -2379,9 +2379,9 @@ function animate() {
         if (targetNinja) {
           const targetX = targetNinja.root.position.x;
           const difX = targetX - obs.position.x;
-          const velGiroIA = 6.2; // Velocidad de persecución lateral
+          const velGiro = 6.2; // Velocidad de persecución lateral
           if (Math.abs(difX) > 0.04) {
-            obs.position.x += Math.sign(difX) * Math.min(Math.abs(difX), velGiroIA * delta);
+            obs.position.x += Math.sign(difX) * Math.min(Math.abs(difX), velGiro * delta);
           }
         }
       } else if (obs.anillo) {
