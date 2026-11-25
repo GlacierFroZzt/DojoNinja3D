@@ -1006,7 +1006,13 @@ class RedDojo {
         this.disparar('jugadorMovido', { id: msg.id, x: msg.x, y: msg.y, z: msg.z });
       }
     } else if (msg.tipo === 'SPAWN_OBSTACLE') {
-      this.disparar('obstaculoGenerado', { id: msg.id, tipo: msg.tipoObj, posX: msg.posX });
+      this.disparar('obstaculoGenerado', {
+        id: msg.id,
+        tipo: msg.tipoObj,
+        posX: msg.posX,
+        targetId: msg.targetId,
+        targetNombre: msg.targetNombre
+      });
     } else if (msg.tipo === 'IMPACT_OBSTACLE') {
       this.disparar('impactoObstaculo', { id: msg.id, tipo: msg.tipoImpacto, x: msg.x, z: msg.z });
     } else if (msg.tipo === 'PLAYER_POWER') {
@@ -1048,7 +1054,9 @@ class RedDojo {
       tipo: 'SPAWN_OBSTACLE',
       id: datos.id || ('obs_' + this.obstacleSeq),
       tipoObj: datos.tipo,
-      posX: datos.posX
+      posX: datos.posX,
+      targetId: datos.targetId,
+      targetNombre: datos.targetNombre
     };
     if (this.isHost) {
       this.enviarAClientes(msg);
@@ -1368,7 +1376,15 @@ let ultimoObstaculoSeq = -1;
 red.on('obstaculoGenerado', (datos) => {
   if (datos.id && obstaculos.some(o => o.idObstaculo === datos.id)) return;
   if (juegoActivo && !juegoPausado) {
-    crearElementoPorTipo(datos.tipo, datos.posX, datos.id);
+    crearElementoPorTipo(datos.tipo, datos.posX, datos.id, datos.targetId, datos.targetNombre);
+
+    if (datos.tipo === 'shuriken_ia') {
+      if (datos.targetId === red.miId) {
+        mostrarAviso('hud-aviso-cerca', '⚠️ ¡SHURIKEN IA TE PERSIGUE! ¡PARRY OBLIGATORIO! ⚔️', 2600);
+      } else if (datos.targetNombre) {
+        mostrarAviso('hud-aviso-cerca', `🤖 Shuriken IA persigue a ${datos.targetNombre}`, 2200);
+      }
+    }
   }
 });
 
@@ -1384,6 +1400,13 @@ red.on('impactoObstaculo', (datos) => {
   if (datos.tipo === 'parry') {
     particulas.emitir(posImpacto, 0x64b5f6, 30);
     audio.playParry();
+  } else if (datos.tipo === 'parry_ia') {
+    particulas.emitir(posImpacto, 0xffd700, 50);
+    audio.playParry();
+    mostrarAviso('hud-aviso-parry', '⚔️ ¡ALIADO PARREÓ AL SHURIKEN IA!', 1300);
+  } else if (datos.tipo === 'golpe_ia') {
+    particulas.emitir(posImpacto, 0xff1744, 40);
+    audio.playGolpe();
   } else if (datos.tipo === 'escudo' || datos.tipo === 'escudo_bloqueo') {
     particulas.emitir(posImpacto, 0x00e5ff, 25);
     audio.playParry();
@@ -1548,6 +1571,92 @@ function crearShurikenMesh() {
 }
 
 // =============================================================
+// SHURIKEN CON INTELIGENCIA ARTIFICIAL (IA PERSEGUIDORA QUE BRITLLA)
+// Cumple: "La IA sea un shuriken que brilla, que seleccione a un jugador y lo tenga que parrear sí o sí"
+// =============================================================
+function crearShurikenIAMesh(targetNombre = '') {
+  const g = new THREE.Group();
+
+  // Material brillante incandescente con emisión de luz roja / carmesí
+  const matMetalIA = new THREE.MeshStandardMaterial({
+    color: 0xff1744,
+    emissive: 0xff1744,
+    emissiveIntensity: 1.6,
+    metalness: 0.85,
+    roughness: 0.15
+  });
+
+  let shurikenMesh;
+  if (plantillaShuriken) {
+    shurikenMesh = plantillaShuriken.clone(true);
+    shurikenMesh.rotation.set(Math.PI / 2, 0, 0);
+    shurikenMesh.traverse((child) => {
+      if (child.isMesh) {
+        child.material = matMetalIA;
+      }
+    });
+  } else {
+    shurikenMesh = new THREE.Group();
+    const centro = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.38, 0.1, 10), matMetalIA);
+    centro.rotation.x = Math.PI / 2;
+    shurikenMesh.add(centro);
+    for (let i = 0; i < 4; i++) {
+      const hoja = new THREE.Mesh(new THREE.ConeGeometry(0.35, 1.05, 4), matMetalIA);
+      const ang = (i * Math.PI) / 2;
+      hoja.position.set(Math.cos(ang) * 0.8, Math.sin(ang) * 0.8, 0);
+      hoja.rotation.z = ang - Math.PI / 2;
+      shurikenMesh.add(hoja);
+    }
+  }
+  g.add(shurikenMesh);
+  g.shurikenMesh = shurikenMesh;
+
+  // Anillo de energía exterior orbital que gira en contra-rotación
+  const matAnilloIA = new THREE.MeshBasicMaterial({
+    color: 0xff3d00,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.85
+  });
+  const anilloIA = new THREE.Mesh(new THREE.TorusGeometry(1.2, 0.04, 8, 24), matAnilloIA);
+  g.add(anilloIA);
+  g.anilloIA = anilloIA;
+
+  // Luz dinámica propia que ilumina la pista en tiempo real
+  const luzIA = new THREE.PointLight(0xff1744, 3.8, 9);
+  luzIA.position.set(0, 0, 0);
+  g.add(luzIA);
+
+  // Etiqueta flotante holográfica sobre el shuriken IA
+  const canvasEtiqueta = document.createElement('canvas');
+  canvasEtiqueta.width = 320; canvasEtiqueta.height = 64;
+  const ctx = canvasEtiqueta.getContext('2d');
+  ctx.fillStyle = 'rgba(180, 0, 20, 0.9)';
+  ctx.fillRect(4, 4, 312, 56);
+  ctx.strokeStyle = '#ff5252';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(4, 4, 312, 56);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 19px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const textoTag = targetNombre ? `🤖 IA ➔ ${targetNombre}` : '🤖 SHURIKEN IA';
+  ctx.fillText(textoTag, 160, 32);
+
+  const spriteTag = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: new THREE.CanvasTexture(canvasEtiqueta),
+    depthTest: false
+  }));
+  spriteTag.scale.set(2.4, 0.5, 1);
+  spriteTag.position.set(0, 1.4, 0);
+  g.add(spriteTag);
+  g.spriteTag = spriteTag;
+
+  g.scale.set(1.25, 1.25, 1.25);
+  return g;
+}
+
+// =============================================================
 // 10. ESTADO DEL JUEGO Y CONTROLES (CON TECLA ESCAPE PARA PAUSA)
 // =============================================================
 let juegoActivo = false;
@@ -1601,8 +1710,9 @@ if (selEscenarioEl) {
 // =============================================================
 let obstaculos = [];
 let spawnTimer = 0;
+let iaShurikenTimer = 3.5;
 
-function crearElementoPorTipo(tipo, posX, idObstaculo = null) {
+function crearElementoPorTipo(tipo, posX, idObstaculo = null, targetId = null, targetNombre = '') {
   let obj;
   if (tipo === 'item_pocion') {
     obj = crearPocionMesh();
@@ -1615,6 +1725,12 @@ function crearElementoPorTipo(tipo, posX, idObstaculo = null) {
   } else if (tipo === 'item_pergamino') {
     obj = crearPergaminoMesh();
     obj.tipo = 'item_pergamino';
+    obj.position.set(posX, 1.2, -45);
+  } else if (tipo === 'shuriken_ia') {
+    obj = crearShurikenIAMesh(targetNombre);
+    obj.tipo = 'shuriken_ia';
+    obj.targetId = targetId;
+    obj.targetNombre = targetNombre;
     obj.position.set(posX, 1.2, -45);
   } else if (tipo === 'shuriken') {
     obj = crearShurikenMesh();
@@ -1638,10 +1754,52 @@ function puedeGenerarObstaculos() {
   return false;
 }
 
+function obtenerObjetivoVivoParaIA() {
+  const candidatos = [];
+  if (!jugador.estaMuerto) {
+    const miNombre = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja';
+    candidatos.push({ id: red.miId, nombre: miNombre });
+  }
+  Object.keys(otrosJugadores).forEach((id) => {
+    const p = otrosJugadores[id];
+    if (p && !p.estaMuerto) {
+      candidatos.push({ id, nombre: p.nombre });
+    }
+  });
+  if (candidatos.length === 0) return null;
+  return candidatos[Math.floor(Math.random() * candidatos.length)];
+}
+
 function generarElemento(delta) {
   // Solo el anfitrión (o el relevo si el anfitrión se desconectó) genera los obstáculos de la sala
   if (!puedeGenerarObstaculos() || !juegoActivo || juegoPausado) {
     return;
+  }
+
+  // Generación especial del Shuriken IA perseguidor brillante
+  iaShurikenTimer += delta;
+  const intervaloIA = dificultadActual === 'dificil' ? 6.5 : 8.5;
+  if (iaShurikenTimer >= intervaloIA) {
+    iaShurikenTimer = 0;
+    const objetivo = obtenerObjetivoVivoParaIA();
+    if (objetivo) {
+      const posX = (Math.random() * 6) - 3;
+      const idObs = 'obs_ia_' + (++red.obstacleSeq);
+      crearElementoPorTipo('shuriken_ia', posX, idObs, objetivo.id, objetivo.nombre);
+      red.enviarObstaculo({
+        id: idObs,
+        tipo: 'shuriken_ia',
+        posX,
+        targetId: objetivo.id,
+        targetNombre: objetivo.nombre
+      });
+
+      if (objetivo.id === red.miId) {
+        mostrarAviso('hud-aviso-cerca', '⚠️ ¡SHURIKEN IA TE PERSIGUE! ¡PARRY OBLIGATORIO! ⚔️', 2600);
+      } else {
+        mostrarAviso('hud-aviso-cerca', `🤖 Shuriken IA persigue a ${objetivo.nombre}`, 2200);
+      }
+    }
   }
 
   spawnTimer += delta;
@@ -1735,6 +1893,51 @@ function procesarColisiones() {
         mostrarAviso('hud-aviso-parry', '📜 PERGAMINO +200');
         actualizarHUD();
         red.enviarImpactoObstaculo({ id: obj.idObstaculo, tipo: 'pergamino', x: obj.position.x, z: obj.position.z });
+        continue;
+      }
+
+      if (obj.tipo === 'shuriken_ia') {
+        if (esParry && dz >= -1.8 && dz <= 0.5) {
+          puntos += 300;
+          audio.playParry();
+          particulas.emitir(localPos, 0xffd700, 50);
+          mostrarAviso('hud-aviso-parry', '⚔️ ¡PARRY A LA IA PERFECTO! +300', 1400);
+          red.enviarImpactoObstaculo({ id: obj.idObstaculo, tipo: 'parry_ia', x: obj.position.x, z: obj.position.z });
+        } else {
+          // El shuriken IA se DEBÍA parrear sí o sí: rompe el escudo si lo tenía, o quita vida
+          if (conEscudo) {
+            jugador.escudoTimer = 0;
+            if (jugador.escudoMesh) jugador.escudoMesh.visible = false;
+            audio.playGolpe();
+            particulas.emitir(localPos, 0xff1744, 35);
+            flashImpacto();
+            mostrarAviso('hud-aviso-cerca', '💥 ¡LA IA ROMPIÓ TU ESCUDO! ¡DEBÍAS PARREAR!', 1800);
+          } else {
+            vidas--;
+            audio.playGolpe();
+            particulas.emitir(localPos, 0xff1744, 45);
+            flashImpacto();
+            actualizarHUD();
+            mostrarAviso('hud-aviso-cerca', '❌ ¡FALLASTE EL PARRY A LA IA!', 1800);
+          }
+          red.enviarImpactoObstaculo({ id: obj.idObstaculo, tipo: 'golpe_ia', x: obj.position.x, z: obj.position.z });
+          if (vidas <= 0) {
+            const nombreJug = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja';
+            jugador.morir();
+            red.enviarMuerte({ id: red.miId, nombre: nombreJug });
+
+            const hayCompaneroVivo = Object.values(otrosJugadores).some(p => !p.estaMuerto);
+            if (hayCompaneroVivo) {
+              mostrarAviso('hud-aviso-cerca', '💀 ¡HAS CAÍDO! Modo Espectador — Apoyando a tu compañero...', 4000);
+              const elEsp = document.getElementById('hud-espectador');
+              if (elEsp) elEsp.style.display = 'block';
+            } else {
+              const motivo = '¡Todos los ninjas han caído!';
+              terminarJuego(motivo);
+              red.enviarFinPartida({ motivo });
+            }
+          }
+        }
         continue;
       }
 
@@ -1854,6 +2057,46 @@ function animate() {
       obs.position.z += velocidadObstaculos * delta;
       if (obs.tipo === 'shuriken') {
         obs.rotation.z += 25 * delta;
+      } else if (obs.tipo === 'shuriken_ia') {
+        obs.rotation.z += 35 * delta;
+        if (obs.anilloIA) {
+          obs.anilloIA.rotation.x += 8 * delta;
+          obs.anilloIA.rotation.y += 6 * delta;
+        }
+        if (Math.random() < 0.35) {
+          particulas.emitir(obs.position, 0xff1744, 2);
+        }
+
+        // INTELIGENCIA ARTIFICIAL: Persecución activa del objetivo asignado
+        let targetNinja = null;
+        if (obs.targetId === red.miId) {
+          if (!jugador.estaMuerto) targetNinja = jugador;
+        } else if (obs.targetId && otrosJugadores[obs.targetId]) {
+          if (!otrosJugadores[obs.targetId].estaMuerto) targetNinja = otrosJugadores[obs.targetId];
+        }
+
+        // Si el objetivo cayó, reorientar la IA al ninja sobreviviente
+        if (!targetNinja) {
+          if (!jugador.estaMuerto) {
+            targetNinja = jugador;
+            obs.targetId = red.miId;
+          } else {
+            const companero = Object.values(otrosJugadores).find(p => !p.estaMuerto);
+            if (companero) {
+              targetNinja = companero;
+              obs.targetId = companero.id;
+            }
+          }
+        }
+
+        if (targetNinja) {
+          const targetX = targetNinja.root.position.x;
+          const difX = targetX - obs.position.x;
+          const velGiroIA = 6.2; // Velocidad de persecución lateral
+          if (Math.abs(difX) > 0.04) {
+            obs.position.x += Math.sign(difX) * Math.min(Math.abs(difX), velGiroIA * delta);
+          }
+        }
       } else if (obs.anillo) {
         obs.anillo.rotation.z += 4 * delta;
         obs.rotation.y += 2 * delta;
@@ -1904,6 +2147,7 @@ function empezarPartida() {
   juegoPausado = false;
   parryTimer = 0;
   ultimoObstaculoSeq = -1;
+  iaShurikenTimer = 3.5;
 
   obstaculos.forEach(o => scene.remove(o));
   obstaculos = [];
