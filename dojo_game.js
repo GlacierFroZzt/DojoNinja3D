@@ -540,10 +540,10 @@ function crearNinjaFallback(colorRopa = 0x153b54) {
 // 6. CLASE JUGADOR NINJA (CON MODELO ORIGINAL OBJ)
 // =============================================================
 class JugadorNinja {
-  constructor(datos, esLocal = false) {
+  constructor(datos, esPropio = false) {
     this.id = datos.id;
     this.nombre = datos.nombre || 'Ninja';
-    this.esLocal = esLocal;
+    this.esPropio = esPropio;
     this.color = datos.color || { hex: 0x2980b9, ropa: 0x153b54, cinta: 0xffffff };
     this.root = new THREE.Group();
     this.root.position.set(datos.x || 0, datos.y || 0, datos.z || 0);
@@ -565,8 +565,11 @@ class JugadorNinja {
     this.escudoMesh.visible = false;
     this.root.add(this.escudoMesh);
 
+    this.escudoTimer = 0;
+    this.estaMuerto = false;
+
     // Etiqueta flotante con nombre
-    this.etiqueta = this.crearEtiqueta(this.esLocal ? `${this.nombre} (Tú)` : this.nombre);
+    this.etiqueta = this.crearEtiqueta(this.esPropio ? `${this.nombre} (Tú)` : this.nombre);
     this.root.add(this.etiqueta);
 
     this.walkTimer = 0;
@@ -624,6 +627,42 @@ class JugadorNinja {
     }
   }
 
+  morir() {
+    this.estaMuerto = true;
+    this.escudoTimer = 0;
+    if (this.escudoMesh) this.escudoMesh.visible = false;
+    if (this.modelo) {
+      this.modelo.rotation.x = -Math.PI / 2;
+      this.modelo.position.y = 0.25;
+      this.modelo.rotation.z = 0;
+    }
+    if (this.katana) {
+      this.katana.position.set(0.6, 0.1, 0.3);
+      this.katana.rotation.set(0, 0, 1.4);
+    }
+    this.actualizarEtiqueta(`${this.nombre} (DERROTADO 💀)`);
+    particulas.emitir(this.root.position, 0xff1744, 45);
+    audio.playGolpe();
+  }
+
+  revivir(nombre, colorRopa, posX) {
+    this.estaMuerto = false;
+    this.escudoTimer = 0;
+    this.parryTimer = 0;
+    if (this.modelo) {
+      this.modelo.rotation.set(0, 0, 0);
+      this.modelo.position.set(0, 0, 0);
+    }
+    if (this.katana) {
+      this.katana.position.set(0.4, 0.9, 0.4);
+      this.katana.rotation.set(-0.3, 0, -0.4);
+    }
+    this.cambiarColor(colorRopa);
+    this.root.position.set(posX, 0, 0);
+    this.targetPos.set(posX, 0, 0);
+    this.actualizarEtiqueta(nombre);
+  }
+
   pintarColor() {
     if (!this.modelo) return;
     this.modelo.traverse((child) => {
@@ -644,6 +683,16 @@ class JugadorNinja {
 
   actualizar(delta, enMovimiento = false) {
     if (!this.modelo) return;
+
+    if (this.estaMuerto) {
+      this.modelo.position.y = 0.25;
+      this.modelo.rotation.x = -Math.PI / 2;
+      this.modelo.rotation.z = 0;
+      this.katana.position.set(0.6, 0.1, 0.3);
+      this.katana.rotation.set(0, 0, 1.4);
+      this.escudoMesh.visible = false;
+      return;
+    }
 
     if (enMovimiento) {
       this.walkTimer += delta * 14;
@@ -666,14 +715,16 @@ class JugadorNinja {
       this.katana.rotation.set(-0.35, 0, -0.35);
     }
 
-    if (escudoTimer > 0 && this.esLocal) {
+    // Escudo Sagrado
+    if (this.escudoTimer > 0) {
+      this.escudoTimer -= delta;
       this.escudoMesh.visible = true;
       this.escudoMesh.rotation.y += 3.5 * delta;
     } else {
       this.escudoMesh.visible = false;
     }
 
-    if (!this.esLocal) {
+    if (!this.esPropio) {
       this.root.position.lerp(this.targetPos, 0.25);
     }
   }
@@ -683,64 +734,26 @@ class JugadorNinja {
   }
 }
 
-// Instanciar jugador local y enemigo IA con el modelo original
+// Instanciar jugador propio
 const jugador = new JugadorNinja({
-  id: 'jugador_local',
+  id: 'jugador_propio',
   nombre: 'Ninja Shinobi',
   x: 0, y: 0, z: 0,
   color: { hex: 0x2980b9, ropa: 0x153b54, cinta: 0xffffff }
 }, true);
 
 // =============================================================
-// 7. INTELIGENCIA ARTIFICIAL (SEGUIMIENTO CON CAMPO DE VISIÓN)
-// Cumple: "Inteligencia Artificial (seguimiento de enemigos al personaje principal
-// cuándo se encuentre en su campo de visión)"
-// =============================================================
-const enemigoIA = new JugadorNinja({
-  id: 'ia_rival',
-  nombre: 'Ninja Rival (IA)',
-  x: 0, y: 0, z: -28,
-  color: { hex: 0xe74c3c, ropa: 0x881111, cinta: 0xff1744 }
-}, false);
-
-const RANGO_VISION_IA = 26.0;
-const VELOCIDAD_IA = 4.5;
-
-function actualizarIA(delta) {
-  if (!juegoActivo || juegoPausado || codigoSalaActual !== 'GLOBAL' || !enemigoIA || !enemigoIA.root.visible) return;
-
-  const distanciaZ = jugador.root.position.z - enemigoIA.root.position.z;
-  const distanciaX = jugador.root.position.x - enemigoIA.root.position.x;
-
-  // Campo de visión frontal (+Z mirando hacia el jugador)
-  if (distanciaZ > 0 && distanciaZ <= RANGO_VISION_IA) {
-    if (Math.abs(distanciaX) > 0.15) {
-      const dir = Math.sign(distanciaX);
-      enemigoIA.targetPos.x += dir * VELOCIDAD_IA * delta;
-      enemigoIA.targetPos.x = Math.max(-4.2, Math.min(4.2, enemigoIA.targetPos.x));
-    }
-    enemigoIA.actualizar(delta, true);
-  } else {
-    // Fuera de visión: patrulla horizontal
-    enemigoIA.targetPos.x = Math.sin(clock.getElapsedTime() * 1.5) * 3.2;
-    enemigoIA.actualizar(delta, true);
-  }
-}
-
-// =============================================================
-// 8. MULTIJUGADOR EN TIEMPO REAL (SOCKET.IO + P2P WEBRTC / BROADCASTCHANNEL)
-// Funciona tanto localmente (Node.js) como en Vercel (P2P entre navegadores)
+// 7. MULTIJUGADOR EN TIEMPO REAL (P2P WEBRTC / BROADCASTCHANNEL)
+// Comunicación directa entre navegadores sin servidores locales ni dependencias externas
 // =============================================================
 class RedDojo {
   constructor() {
-    this.socket = null;
-    this.socketConectado = false;
     this.peer = null;
     this.peerConexiones = new Map();
     this.peerHostConn = null;
     this.broadcastChannel = null;
     this.isHost = false;
-    this.codigoSala = 'GLOBAL';
+    this.codigoSala = '';
     this.miId = 'ninja_' + Math.random().toString(36).substring(2, 8);
     this.miNombre = 'Ninja';
     this.jugadores = {};
@@ -748,33 +761,6 @@ class RedDojo {
     this.listeners = {};
     this.timerUnirse = null;
     this.obstacleSeq = 0;
-
-    if (typeof io === 'function') {
-      try {
-        this.socket = io({ timeout: 2500, reconnectionAttempts: 2 });
-        this.socket.on('connect', () => {
-          this.socketConectado = true;
-          this.miId = this.socket.id;
-          console.log('[RedDojo] Conectado por Socket.io:', this.miId);
-        });
-        this.socket.on('disconnect', () => {
-          this.socketConectado = false;
-        });
-        this.socket.on('connect_error', () => {
-          this.socketConectado = false;
-        });
-
-        const eventos = [
-          'joinedLobby', 'lobbyUpdate', 'roomError', 'matchStarted',
-          'jugadoresActuales', 'nuevoJugador', 'jugadorMovido', 'jugadorSalio'
-        ];
-        eventos.forEach((evt) => {
-          this.socket.on(evt, (datos) => this.disparar(evt, datos));
-        });
-      } catch (e) {
-        console.warn('[RedDojo] Socket.io no disponible:', e);
-      }
-    }
   }
 
   on(evento, cb) {
@@ -801,12 +787,6 @@ class RedDojo {
 
   crearSala(nombre) {
     this.miNombre = nombre || 'Ninja';
-    if (this.socket && this.socketConectado) {
-      this.socket.emit('createRoom', { userName: this.miNombre });
-      return;
-    }
-
-    // Modo P2P (Vercel / navegadores)
     this.cerrarCanales();
     this.isHost = true;
     this.codigoSala = this.generarCodigo();
@@ -898,6 +878,15 @@ class RedDojo {
       }
       this.disparar('jugadorMovido', { id: msg.id, x: msg.x, y: msg.y, z: msg.z });
       this.enviarAClientes(msg, msg.id);
+    } else if (msg.tipo === 'IMPACT_OBSTACLE') {
+      this.disparar('impactoObstaculo', { id: msg.id, tipo: msg.tipoImpacto, x: msg.x, z: msg.z });
+      this.enviarAClientes(msg, msg.remitenteId);
+    } else if (msg.tipo === 'PLAYER_POWER') {
+      this.disparar('poderActivado', { id: msg.id, tipo: msg.poder, duracion: msg.duracion });
+      this.enviarAClientes(msg, msg.id);
+    } else if (msg.tipo === 'PLAYER_DEATH') {
+      this.disparar('muerteJugador', { id: msg.id, nombre: msg.nombre });
+      this.enviarAClientes(msg, msg.id);
     } else if (msg.tipo === 'PLAYER_LEFT') {
       delete this.jugadores[msg.id];
       this.disparar('jugadorSalio', msg.id);
@@ -920,12 +909,7 @@ class RedDojo {
       return;
     }
 
-    if (this.socket && this.socketConectado) {
-      this.socket.emit('joinRoom', { userName: this.miNombre, roomCode: cod });
-      return;
-    }
-
-    // Modo P2P en Vercel
+    // Modo P2P WebRTC / BroadcastChannel
     this.cerrarCanales();
     this.isHost = false;
     this.codigoSala = cod;
@@ -945,7 +929,7 @@ class RedDojo {
         this.disparar('roomError', `No se encontró la sala "${cod}". Verifica que el código sea correcto y el anfitrión esté en el lobby.`);
         this.cerrarCanales();
       }
-    }, 4500);
+    }, 5000);
 
     // 1. BroadcastChannel (para pestañas en el mismo navegador)
     if (typeof BroadcastChannel !== 'undefined') {
@@ -960,7 +944,6 @@ class RedDojo {
           }
         };
         this.broadcastChannel.postMessage(req);
-        // Reintentos rápidos por si el host tardó unos milisegundos en inicializar
         setTimeout(() => { if (!conectado && this.broadcastChannel) this.broadcastChannel.postMessage(req); }, 250);
         setTimeout(() => { if (!conectado && this.broadcastChannel) this.broadcastChannel.postMessage(req); }, 750);
         setTimeout(() => { if (!conectado && this.broadcastChannel) this.broadcastChannel.postMessage(req); }, 1500);
@@ -1019,23 +1002,28 @@ class RedDojo {
       if (msg.id !== this.miId) {
         this.disparar('jugadorMovido', { id: msg.id, x: msg.x, y: msg.y, z: msg.z });
       }
+    } else if (msg.tipo === 'SPAWN_OBSTACLE') {
+      this.disparar('obstaculoGenerado', { id: msg.id, tipo: msg.tipoObj, posX: msg.posX });
+    } else if (msg.tipo === 'IMPACT_OBSTACLE') {
+      this.disparar('impactoObstaculo', { id: msg.id, tipo: msg.tipoImpacto, x: msg.x, z: msg.z });
+    } else if (msg.tipo === 'PLAYER_POWER') {
+      if (msg.id !== this.miId) {
+        this.disparar('poderActivado', { id: msg.id, tipo: msg.poder, duracion: msg.duracion });
+      }
+    } else if (msg.tipo === 'PLAYER_DEATH') {
+      if (msg.id !== this.miId) {
+        this.disparar('muerteJugador', { id: msg.id, nombre: msg.nombre });
+      }
+    } else if (msg.tipo === 'TIME_SYNC') {
+      this.disparar('tiempoSincronizado', msg.tiempo);
     } else if (msg.tipo === 'PLAYER_LEFT') {
       if (msg.id !== this.miId) {
         this.disparar('jugadorSalio', msg.id);
       }
-    } else if (msg.tipo === 'SPAWN_OBSTACLE') {
-      this.disparar('obstaculoGenerado', { seq: msg.seq, tipo: msg.tipoObj, posX: msg.posX });
-    } else if (msg.tipo === 'TIME_SYNC') {
-      this.disparar('tiempoSincronizado', msg.tiempo);
     }
   }
 
   iniciarPartidaLobby() {
-    if (this.socket && this.socketConectado) {
-      this.socket.emit('startLobbyMatch');
-      return;
-    }
-
     if (this.isHost) {
       const msg = {
         tipo: 'MATCH_STARTED',
@@ -1050,14 +1038,10 @@ class RedDojo {
   }
 
   enviarObstaculo(datos) {
-    if (this.socket && this.socketConectado) {
-      this.socket.emit('spawnObstacle', datos);
-      return;
-    }
     this.obstacleSeq++;
     const msg = {
       tipo: 'SPAWN_OBSTACLE',
-      seq: this.obstacleSeq,
+      id: datos.id || ('obs_' + this.obstacleSeq),
       tipoObj: datos.tipo,
       posX: datos.posX
     };
@@ -1066,11 +1050,53 @@ class RedDojo {
     }
   }
 
-  enviarTiempo(t) {
-    if (this.socket && this.socketConectado) {
-      this.socket.emit('syncTime', { tiempo: t });
-      return;
+  enviarImpactoObstaculo(datos) {
+    const msg = {
+      tipo: 'IMPACT_OBSTACLE',
+      remitenteId: this.miId,
+      id: datos.id,
+      tipoImpacto: datos.tipo,
+      x: datos.x,
+      z: datos.z
+    };
+    if (this.isHost) {
+      this.enviarAClientes(msg);
+    } else {
+      if (this.broadcastChannel) try { this.broadcastChannel.postMessage(msg); } catch (e) {}
+      if (this.peerHostConn && this.peerHostConn.open) try { this.peerHostConn.send(msg); } catch (e) {}
     }
+  }
+
+  enviarPoder(datos) {
+    const msg = {
+      tipo: 'PLAYER_POWER',
+      id: this.miId,
+      poder: datos.tipo,
+      duracion: datos.duracion
+    };
+    if (this.isHost) {
+      this.enviarAClientes(msg);
+    } else {
+      if (this.broadcastChannel) try { this.broadcastChannel.postMessage(msg); } catch (e) {}
+      if (this.peerHostConn && this.peerHostConn.open) try { this.peerHostConn.send(msg); } catch (e) {}
+    }
+  }
+
+  enviarMuerte(datos) {
+    const msg = {
+      tipo: 'PLAYER_DEATH',
+      id: this.miId,
+      nombre: datos.nombre
+    };
+    if (this.isHost) {
+      this.enviarAClientes(msg);
+    } else {
+      if (this.broadcastChannel) try { this.broadcastChannel.postMessage(msg); } catch (e) {}
+      if (this.peerHostConn && this.peerHostConn.open) try { this.peerHostConn.send(msg); } catch (e) {}
+    }
+  }
+
+  enviarTiempo(t) {
     const msg = {
       tipo: 'TIME_SYNC',
       tiempo: t
@@ -1081,17 +1107,10 @@ class RedDojo {
   }
 
   entrarJuego(datos) {
-    if (this.socket && this.socketConectado) {
-      this.socket.emit('entrarJuego', datos);
-    }
+    // Listo para sincronización
   }
 
   enviarMovimiento(pos) {
-    if (this.socket && this.socketConectado) {
-      this.socket.emit('mover', pos);
-      return;
-    }
-
     const msg = {
       tipo: 'PLAYER_MOVED',
       id: this.miId,
@@ -1103,9 +1122,9 @@ class RedDojo {
     if (this.isHost) {
       this.enviarAClientes(msg);
     } else {
-      if (this.broadcastChannel) this.broadcastChannel.postMessage(msg);
+      if (this.broadcastChannel) try { this.broadcastChannel.postMessage(msg); } catch (e) {}
       if (this.peerHostConn && this.peerHostConn.open) {
-        this.peerHostConn.send(msg);
+        try { this.peerHostConn.send(msg); } catch (e) {}
       }
     }
   }
@@ -1124,9 +1143,6 @@ class RedDojo {
 
   salir() {
     if (this.timerUnirse) clearTimeout(this.timerUnirse);
-    if (this.socket && this.socketConectado) {
-      this.socket.emit('leaveGame');
-    }
     const msg = { tipo: 'PLAYER_LEFT', id: this.miId };
     if (this.isHost) {
       this.enviarAClientes(msg);
@@ -1248,7 +1264,6 @@ red.on('matchStarted', (datos) => {
 });
 
 red.on('jugadoresActuales', (lista) => {
-  if (codigoSalaActual === 'GLOBAL') return;
   Object.keys(lista).forEach(id => {
     if (id !== red.miId && !otrosJugadores[id]) {
       const esHostRemoto = (red.anfitrionId === id);
@@ -1272,7 +1287,6 @@ red.on('jugadoresActuales', (lista) => {
 });
 
 red.on('nuevoJugador', (datos) => {
-  if (codigoSalaActual === 'GLOBAL') return;
   if (datos.id !== red.miId && !otrosJugadores[datos.id]) {
     const esHostRemoto = (red.anfitrionId === datos.id);
     const colorRopa = esHostRemoto ? 0x153b54 : 0x881111;
@@ -1296,7 +1310,7 @@ red.on('nuevoJugador', (datos) => {
 red.on('jugadorMovido', (datos) => {
   if (datos.id === red.miId) return;
 
-  if (!otrosJugadores[datos.id] && juegoActivo && codigoSalaActual !== 'GLOBAL') {
+  if (!otrosJugadores[datos.id] && juegoActivo) {
     const esHostRemoto = (red.anfitrionId === datos.id);
     const colorRopa = esHostRemoto ? 0x153b54 : 0x881111;
     const colorHex = esHostRemoto ? 0x2980b9 : 0xe74c3c;
@@ -1330,13 +1344,64 @@ red.on('jugadorSalio', (id) => {
 
 let ultimoObstaculoSeq = -1;
 red.on('obstaculoGenerado', (datos) => {
-  if (datos.seq !== undefined) {
-    if (datos.seq <= ultimoObstaculoSeq) return; // Deduplicación entre WebRTC y BroadcastChannel
-    ultimoObstaculoSeq = datos.seq;
-  }
+  if (datos.id && obstaculos.some(o => o.idObstaculo === datos.id)) return;
   if (juegoActivo && !juegoPausado) {
-    crearElementoPorTipo(datos.tipo, datos.posX);
+    crearElementoPorTipo(datos.tipo, datos.posX, datos.id);
   }
+});
+
+red.on('impactoObstaculo', (datos) => {
+  if (!datos || !datos.id) return;
+  const idx = obstaculos.findIndex(o => o.idObstaculo === datos.id);
+  if (idx !== -1) {
+    const obs = obstaculos[idx];
+    scene.remove(obs);
+    obstaculos.splice(idx, 1);
+  }
+  const posImpacto = new THREE.Vector3(datos.x || 0, 1.2, datos.z || 0);
+  if (datos.tipo === 'parry') {
+    particulas.emitir(posImpacto, 0x64b5f6, 30);
+    audio.playParry();
+  } else if (datos.tipo === 'escudo' || datos.tipo === 'escudo_bloqueo') {
+    particulas.emitir(posImpacto, 0x00e5ff, 25);
+    audio.playParry();
+  } else if (datos.tipo === 'golpe') {
+    particulas.emitir(posImpacto, 0xe53935, 30);
+    audio.playGolpe();
+  } else if (datos.tipo === 'pocion') {
+    particulas.emitir(posImpacto, 0xff1744, 25);
+    audio.playItem();
+  } else if (datos.tipo === 'pergamino') {
+    particulas.emitir(posImpacto, 0xffd54f, 25);
+    audio.playItem();
+  }
+});
+
+red.on('poderActivado', (datos) => {
+  if (datos.id === red.miId) return;
+  const p = otrosJugadores[datos.id];
+  if (!p) return;
+
+  if (datos.tipo === 'parry') {
+    p.parryTimer = 0.28;
+    audio.playParry();
+    particulas.emitir(p.root.position, 0x64b5f6, 15);
+  } else if (datos.tipo === 'escudo') {
+    p.escudoTimer = datos.duracion || 6.0;
+    audio.playItem();
+    particulas.emitir(p.root.position, 0x00e5ff, 25);
+  } else if (datos.tipo === 'pocion') {
+    audio.playItem();
+    particulas.emitir(p.root.position, 0xff1744, 25);
+  }
+});
+
+red.on('muerteJugador', (datos) => {
+  if (datos.id === red.miId) return;
+  if (otrosJugadores[datos.id]) {
+    otrosJugadores[datos.id].morir();
+  }
+  mostrarAviso('hud-aviso-cerca', `¡${datos.nombre || 'El aliado'} ha caído!`);
 });
 
 red.on('tiempoSincronizado', (t) => {
@@ -1464,11 +1529,12 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') teclas.izquierda = true;
   if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') teclas.derecha = true;
   if (e.key === ' ' || e.code === 'Space') {
-    if (juegoActivo && !juegoPausado && parryTimer <= 0) {
+    if (juegoActivo && !juegoPausado && parryTimer <= 0 && !jugador.estaMuerto) {
       parryTimer = 0.28;
       jugador.parryTimer = 0.28;
       audio.playParry();
       particulas.emitir(jugador.root.position, 0x64b5f6, 15);
+      red.enviarPoder({ tipo: 'parry' });
     }
   }
   // PAUSA CON TECLA ESCAPE O P
@@ -1497,7 +1563,7 @@ if (selEscenarioEl) {
 let obstaculos = [];
 let spawnTimer = 0;
 
-function crearElementoPorTipo(tipo, posX) {
+function crearElementoPorTipo(tipo, posX, idObstaculo = null) {
   let obj;
   if (tipo === 'item_pocion') {
     obj = crearPocionMesh();
@@ -1520,14 +1586,15 @@ function crearElementoPorTipo(tipo, posX) {
     obj.tipo = 'pergamino';
     obj.position.set(posX, 1.2, -45);
   }
+  obj.idObstaculo = idObstaculo || ('obs_' + (++red.obstacleSeq));
   scene.add(obj);
   obstaculos.push(obj);
   return obj;
 }
 
 function generarElemento(delta) {
-  // En sala multijugador, solo el anfitrión genera los obstáculos para que ambos esquiven lo mismo
-  if (codigoSalaActual !== 'GLOBAL' && !red.isHost) {
+  // Solo el anfitrión genera los obstáculos de la sala para que ambos esquiven lo mismo
+  if (!red.isHost) {
     return;
   }
 
@@ -1550,11 +1617,9 @@ function generarElemento(delta) {
       tipo = (modoActual === 'esquivar') ? 'shuriken' : 'pergamino';
     }
 
-    crearElementoPorTipo(tipo, posX);
-
-    if (codigoSalaActual !== 'GLOBAL' && red.isHost) {
-      red.enviarObstaculo({ tipo, posX });
-    }
+    const idObs = 'obs_' + (++red.obstacleSeq);
+    crearElementoPorTipo(tipo, posX, idObs);
+    red.enviarObstaculo({ id: idObs, tipo, posX });
   }
 }
 
@@ -1578,9 +1643,10 @@ function flashImpacto() {
 // 12. DETECCIÓN Y USO DE COLISIONES
 // =============================================================
 function procesarColisiones() {
+  if (jugador.estaMuerto) return;
   const localPos = jugador.root.position;
   const esParry = parryTimer > 0;
-  const conEscudo = escudoTimer > 0;
+  const conEscudo = jugador.escudoTimer > 0;
 
   for (let i = obstaculos.length - 1; i >= 0; i--) {
     const obj = obstaculos[i];
@@ -1599,15 +1665,19 @@ function procesarColisiones() {
         particulas.emitir(localPos, 0xff1744, 25);
         mostrarAviso('hud-aviso-cerca', '❤️ +1 VIDA');
         actualizarHUD();
+        red.enviarImpactoObstaculo({ id: obj.idObstaculo, tipo: 'pocion', x: obj.position.x, z: obj.position.z });
+        red.enviarPoder({ tipo: 'pocion' });
         continue;
       }
 
       if (obj.tipo === 'item_escudo') {
-        escudoTimer = 6.0;
+        jugador.escudoTimer = 6.0;
         audio.playItem();
         particulas.emitir(localPos, 0x00e5ff, 30);
         mostrarAviso('hud-aviso-parry', '🛡️ ESCUDO ACTIVO (6s)');
         actualizarHUD();
+        red.enviarImpactoObstaculo({ id: obj.idObstaculo, tipo: 'escudo', x: obj.position.x, z: obj.position.z });
+        red.enviarPoder({ tipo: 'escudo', duracion: 6.0 });
         continue;
       }
 
@@ -1617,6 +1687,7 @@ function procesarColisiones() {
         particulas.emitir(localPos, 0xffd54f, 35);
         mostrarAviso('hud-aviso-parry', '📜 PERGAMINO +200');
         actualizarHUD();
+        red.enviarImpactoObstaculo({ id: obj.idObstaculo, tipo: 'pergamino', x: obj.position.x, z: obj.position.z });
         continue;
       }
 
@@ -1626,17 +1697,23 @@ function procesarColisiones() {
           audio.playParry();
           particulas.emitir(localPos, 0x64b5f6, 30);
           mostrarAviso('hud-aviso-parry', '⚔️ PARRY KATANA +150');
+          red.enviarImpactoObstaculo({ id: obj.idObstaculo, tipo: 'parry', x: obj.position.x, z: obj.position.z });
         } else if (conEscudo) {
           audio.playParry();
           particulas.emitir(localPos, 0x00e5ff, 20);
           mostrarAviso('hud-aviso-cerca', '🛡️ ¡ESCUDO ABSORBIÓ!');
+          red.enviarImpactoObstaculo({ id: obj.idObstaculo, tipo: 'escudo_bloqueo', x: obj.position.x, z: obj.position.z });
         } else {
           vidas--;
           audio.playGolpe();
           particulas.emitir(localPos, 0xe53935, 25);
           flashImpacto();
           actualizarHUD();
+          red.enviarImpactoObstaculo({ id: obj.idObstaculo, tipo: 'golpe', x: obj.position.x, z: obj.position.z });
           if (vidas <= 0) {
+            const nombreJug = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja';
+            jugador.morir();
+            red.enviarMuerte({ id: red.miId, nombre: nombreJug });
             terminarJuego('¡Has caído en batalla!');
           }
         }
@@ -1646,6 +1723,7 @@ function procesarColisiones() {
         particulas.emitir(localPos, 0xffb300, 20);
         mostrarAviso('hud-aviso-cerca', '+50 PERGAMINO');
         actualizarHUD();
+        red.enviarImpactoObstaculo({ id: obj.idObstaculo, tipo: 'pergamino', x: obj.position.x, z: obj.position.z });
       }
       continue;
     }
@@ -1674,17 +1752,17 @@ function animate() {
 
   if (juegoActivo && !juegoPausado) {
     let seMueve = false;
-    if (teclas.izquierda && jugador.root.position.x > -4.2) {
-      jugador.root.position.x -= 8.5 * delta;
-      seMueve = true;
+    if (!jugador.estaMuerto) {
+      if (teclas.izquierda && jugador.root.position.x > -4.2) {
+        jugador.root.position.x -= 8.5 * delta;
+        seMueve = true;
+      }
+      if (teclas.derecha && jugador.root.position.x < 4.2) {
+        jugador.root.position.x += 8.5 * delta;
+        seMueve = true;
+      }
+      if (parryTimer > 0) parryTimer -= delta;
     }
-    if (teclas.derecha && jugador.root.position.x < 4.2) {
-      jugador.root.position.x += 8.5 * delta;
-      seMueve = true;
-    }
-
-    if (parryTimer > 0) parryTimer -= delta;
-    if (escudoTimer > 0) escudoTimer -= delta;
 
     jugador.actualizar(delta, seMueve);
     luzFocal.target = jugador.root;
@@ -1701,12 +1779,7 @@ function animate() {
       }
     });
 
-    // Inteligencia Artificial enemiga (solo en partida solitaria)
-    if (codigoSalaActual === 'GLOBAL' && enemigoIA && enemigoIA.root.visible) {
-      actualizarIA(delta);
-    }
-
-    // Obstáculos (sincronizados por el anfitrión si es sala)
+    // Obstáculos (sincronizados por el anfitrión)
     generarElemento(delta);
     for (let i = 0; i < obstaculos.length; i++) {
       const obs = obstaculos[i];
@@ -1736,7 +1809,7 @@ function actualizarHUD() {
   document.getElementById('hud-tiempo').textContent = `TIEMPO 00:${tiempo < 10 ? '0' : ''}${tiempo}`;
   const tagSala = document.getElementById('hud-sala-tag');
   if (tagSala) {
-    tagSala.textContent = codigoSalaActual === 'GLOBAL' ? `MODO: ${modoActual.toUpperCase()}` : `SALA: ${codigoSalaActual} | ${modoActual.toUpperCase()}`;
+    tagSala.textContent = `SALA: ${codigoSalaActual || 'DOJO'} | ${modoActual.toUpperCase()}`;
   }
   for (let i = 1; i <= 3; i++) {
     const el = document.getElementById(`vida-${i}`);
@@ -1761,6 +1834,7 @@ function empezarPartida() {
   tiempo = 30; // 30s fijos
   juegoActivo = true;
   juegoPausado = false;
+  parryTimer = 0;
   ultimoObstaculoSeq = -1;
 
   obstaculos.forEach(o => scene.remove(o));
@@ -1775,80 +1849,55 @@ function empezarPartida() {
   audio.iniciarBGM();
 
   const nombre = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja';
-  red.entrarJuego({ nombre, codigoSala: codigoSalaActual });
 
-  // Configuración de personajes según modo (Solitario vs Sala Multijugador)
-  if (codigoSalaActual !== 'GLOBAL') {
-    // EN SALA MULTIJUGADOR:
-    // 1. Ocultar el rival IA para evitar confusiones
-    enemigoIA.root.visible = false;
+  // Limpiar personajes remotos previos
+  Object.keys(otrosJugadores).forEach(id => {
+    if (otrosJugadores[id]) otrosJugadores[id].destruir();
+  });
+  otrosJugadores = {};
 
-    // 2. Limpiar personajes remotos previos
-    Object.keys(otrosJugadores).forEach(id => {
-      if (otrosJugadores[id]) otrosJugadores[id].destruir();
-    });
-    otrosJugadores = {};
+  if (red.isHost) {
+    // ANFITRIÓN: Azul (0x153b54), carril izquierdo (x = -1.5)
+    jugador.revivir(`${nombre} (Tú - Anfitrión)`, 0x153b54, -1.5);
 
-    if (red.isHost) {
-      // ANFITRIÓN: Azul (0x153b54), carril izquierdo (x = -1.5)
-      jugador.cambiarColor(0x153b54);
-      jugador.root.position.set(-1.5, 0, 0);
-      jugador.actualizarEtiqueta(`${nombre} (Tú - Anfitrión)`);
-
-      // Crear modelo del Invitado remoto en carril derecho (x = 1.5), Rojo (0x881111)
-      const guestId = Object.keys(red.jugadores || {}).find(id => id !== red.miId);
-      const guestNombre = (guestId && red.jugadores[guestId] && red.jugadores[guestId].nombre) || 'Invitado';
-      if (guestId) {
-        otrosJugadores[guestId] = new JugadorNinja({
-          id: guestId,
-          nombre: guestNombre,
-          x: 1.5, y: 0, z: 0,
-          color: { hex: 0xe74c3c, ropa: 0x881111, cinta: 0xff1744 }
-        }, false);
-        otrosJugadores[guestId].actualizarEtiqueta(`${guestNombre} (Invitado)`);
-      }
-    } else {
-      // INVITADO: Rojo (0x881111), carril derecho (x = 1.5)
-      jugador.cambiarColor(0x881111);
-      jugador.root.position.set(1.5, 0, 0);
-      jugador.actualizarEtiqueta(`${nombre} (Tú)`);
-
-      // Crear modelo del Anfitrión remoto en carril izquierdo (x = -1.5), Azul (0x153b54)
-      const hostId = red.anfitrionId || Object.keys(red.jugadores || {}).find(id => id !== red.miId);
-      const hostNombre = (hostId && red.jugadores[hostId] && red.jugadores[hostId].nombre) || 'Anfitrión';
-      if (hostId) {
-        otrosJugadores[hostId] = new JugadorNinja({
-          id: hostId,
-          nombre: hostNombre,
-          x: -1.5, y: 0, z: 0,
-          color: { hex: 0x2980b9, ropa: 0x153b54, cinta: 0xffffff }
-        }, false);
-        otrosJugadores[hostId].actualizarEtiqueta(`${hostNombre} (Anfitrión)`);
-      }
+    const guestId = Object.keys(red.jugadores || {}).find(id => id !== red.miId);
+    const guestNombre = (guestId && red.jugadores[guestId] && red.jugadores[guestId].nombre) || 'Invitado';
+    if (guestId) {
+      otrosJugadores[guestId] = new JugadorNinja({
+        id: guestId,
+        nombre: guestNombre,
+        x: 1.5, y: 0, z: 0,
+        color: { hex: 0xe74c3c, ropa: 0x881111, cinta: 0xff1744 }
+      }, false);
+      otrosJugadores[guestId].actualizarEtiqueta(`${guestNombre} (Invitado)`);
     }
   } else {
-    // EN SOLITARIO:
-    // 1. Mostrar y reposicionar el rival IA
-    enemigoIA.root.visible = true;
-    enemigoIA.root.position.set(0, 0, -28);
-    // 2. Jugador local en el centro, Azul
-    jugador.cambiarColor(0x153b54);
-    jugador.root.position.set(0, 0, 0);
-    jugador.actualizarEtiqueta(`${nombre} (Tú)`);
+    // INVITADO: Rojo (0x881111), carril derecho (x = 1.5)
+    jugador.revivir(`${nombre} (Tú)`, 0x881111, 1.5);
+
+    const hostId = red.anfitrionId || Object.keys(red.jugadores || {}).find(id => id !== red.miId);
+    const hostNombre = (hostId && red.jugadores[hostId] && red.jugadores[hostId].nombre) || 'Anfitrión';
+    if (hostId) {
+      otrosJugadores[hostId] = new JugadorNinja({
+        id: hostId,
+        nombre: hostNombre,
+        x: -1.5, y: 0, z: 0,
+        color: { hex: 0x2980b9, ropa: 0x153b54, cinta: 0xffffff }
+      }, false);
+      otrosJugadores[hostId].actualizarEtiqueta(`${hostNombre} (Anfitrión)`);
+    }
   }
 
-  // Temporizador de partida sincronizado
+  // Temporizador de partida sincronizado por el anfitrión
   if (intervaloTiempo) clearInterval(intervaloTiempo);
   intervaloTiempo = setInterval(() => {
     if (!juegoPausado && juegoActivo) {
-      if (codigoSalaActual !== 'GLOBAL' && !red.isHost) {
+      if (!red.isHost) {
         return; // El invitado sincroniza el tiempo con el anfitrión
       }
       tiempo--;
       actualizarHUD();
-      if (codigoSalaActual !== 'GLOBAL' && red.isHost) {
-        red.enviarTiempo(tiempo);
-      }
+      red.enviarTiempo(tiempo);
       if (tiempo <= 0) {
         terminarJuego('¡Tiempo cumplido! ¡Misión superada!');
       }
@@ -1909,14 +1958,8 @@ function volverAlMenu() {
   });
   otrosJugadores = {};
 
-  // Restablecer al jugador local y rival IA
-  jugador.cambiarColor(0x153b54);
-  jugador.root.position.set(0, 0, 0);
   const nombre = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja Shinobi';
-  jugador.actualizarEtiqueta(`${nombre} (Tú)`);
-
-  enemigoIA.root.visible = true;
-  enemigoIA.root.position.set(0, 0, -28);
+  jugador.revivir(`${nombre} (Tú)`, 0x153b54, 0);
   ultimoObstaculoSeq = -1;
 
   const pantallaLobby = document.getElementById('pantalla-lobby');
@@ -1942,14 +1985,6 @@ function vincularClick(id, fn) {
   if (el) el.onclick = fn;
 }
 
-vincularClick('btn-jugar', () => {
-  codigoSalaActual = 'GLOBAL';
-  empezarPartida();
-});
-vincularClick('btn-comenzar', () => {
-  codigoSalaActual = 'GLOBAL';
-  empezarPartida();
-});
 vincularClick('btn-reintentar', empezarPartida);
 vincularClick('btn-pausa-hud', pausarJuego);
 vincularClick('btn-reanudar', reanudarJuego);
@@ -2129,9 +2164,8 @@ vincularClick('btn-gameover-instagram', compartirInstagram);
 async function init() {
   try {
     await Promise.all([cargarNinja(), cargarShuriken()]);
-    // Asignar el modelo OBJ cargado al jugador, rival IA y multijugador
+    // Asignar el modelo OBJ cargado al jugador y multijugador
     if (jugador) jugador.asignarModelo();
-    if (enemigoIA) enemigoIA.asignarModelo();
     Object.values(otrosJugadores).forEach(j => j.asignarModelo());
     console.log('Modelos OBJ originales del Ninja y Shuriken cargados con éxito!');
   } catch (err) {

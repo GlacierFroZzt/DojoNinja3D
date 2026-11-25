@@ -8,16 +8,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Shojumaru&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="dojo.css">
-  <script>
-    window.io = window.io || function() {
-      return {
-        on: function() {},
-        emit: function() {},
-        id: 'local_' + Math.random().toString(36).substring(2, 7)
-      };
-    };
-  </script>
-  <script src="/socket.io/socket.io.js" onerror="console.log('Modo individual activo')"></script>
   <script src="peerjs.min.js" onerror="this.onerror=null;this.src='https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';"></script>
   <script type="importmap">
   {
@@ -92,10 +82,9 @@
         </select>
       </div>
 
-      <button id="btn-comenzar" class="btn btn-verde" style="margin-top: 6px;">¡Comenzar Desafío!</button>
-      <div style="display: flex; gap: 8px;">
-        <button id="btn-crear-sala" class="btn btn-verde" style="flex: 1; padding: 10px; font-size: 13px;">Crear Sala</button>
-        <button id="btn-unirse-sala" class="btn btn-azul" style="flex: 1; padding: 10px; font-size: 13px;">Unirse a Sala</button>
+      <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
+        <button id="btn-crear-sala" class="btn btn-verde" style="font-size: 15px; padding: 12px; font-weight: bold;">⚔️ Crear Sala Multijugador</button>
+        <button id="btn-unirse-sala" class="btn btn-azul" style="font-size: 15px; padding: 12px; font-weight: bold;">🤝 Unirse a Sala con Código</button>
       </div>
       <button id="btn-puntuaciones" class="btn">Tabla de Puntuaciones (REST)</button>
       <button id="btn-opciones" class="btn" style="background: #37474f;">Configuraciones</button>
