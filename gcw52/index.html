@@ -24,7 +24,6 @@
   </div>
   <div id="impacto-rojo"></div>
 
-  <!-- HUD SUPERIOR EN EL JUEGO -->
   <div id="hud-juego">
     <div class="hud-simple-barra">
       <div class="hud-vidas-box">
@@ -46,7 +45,6 @@
     <div id="hud-espectador" style="display: none; position: absolute; top: 65px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); border: 2px solid #e74c3c; color: #ff5252; padding: 6px 14px; font-weight: bold; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; border-radius: 4px; pointer-events: none; z-index: 100;">Has caído — Modo Espectador (Apoyando a tu compañero)</div>
   </div>
 
-  <!-- 1. PANTALLA DE MENU INICIAL (CON OPCIONES DE RUBRICA INTEGRADAS EN EL DOJO) -->
   <div id="menu-inicio">
     <div class="caja-menu">
       <h2 style="color: #64b5f6; font-size: 24px; margin-bottom: 2px;">Dojo Ninja 3D</h2>
@@ -66,7 +64,7 @@
           </select>
         </div>
         <div style="flex: 1; text-align: left;">
-          <label style="font-size: 11px; color: #bbb;">Dificultad (30s fijos):</label>
+          <label style="font-size: 11px; color: #bbb;">Dificultad:</label>
           <select id="sel-dificultad" style="width: 100%;">
             <option value="facil">Fácil (Lento - 3 Vidas)</option>
             <option value="dificil">Difícil (Rápido - 2 Vidas)</option>
@@ -75,7 +73,7 @@
       </div>
 
       <div style="text-align: left;">
-        <label style="font-size: 11px; color: #bbb;">Escenario Ninja (3 Escenarios):</label>
+        <label style="font-size: 11px; color: #bbb;">Escenario:</label>
         <select id="sel-escenario" style="width: 100%;">
           <option value="dojo">Escenario 1: Tatami Tradicional (Dojo)</option>
           <option value="noche">Escenario 2: Asfalto de Noche (Ciudad)</option>
@@ -87,12 +85,11 @@
         <button id="btn-crear-sala" class="btn btn-verde" style="font-size: 15px; padding: 12px; font-weight: bold;">Crear Sala Multijugador</button>
         <button id="btn-unirse-sala" class="btn btn-azul" style="font-size: 15px; padding: 12px; font-weight: bold;">Unirse a Sala con Código</button>
       </div>
-      <button id="btn-puntuaciones" class="btn">Tabla de Puntuaciones (REST)</button>
+      <button id="btn-puntuaciones" class="btn">Tabla de Puntuaciones</button>
       <button id="btn-opciones" class="btn" style="background: #37474f;">Configuraciones</button>
     </div>
   </div>
 
-  <!-- MODAL: UNIRSE A SALA -->
   <div id="modal-unirse-sala" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); z-index: 130; align-items: center; justify-content: center;">
     <div class="caja-menu" style="max-width: 360px;">
       <h3 style="color: #64b5f6;">Unirse a Sala</h3>
@@ -104,7 +101,6 @@
     </div>
   </div>
 
-  <!-- PANTALLA: LOBBY DE ESPERA MULTIJUGADOR -->
   <div id="pantalla-lobby" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(10, 14, 20, 0.94); z-index: 105; align-items: center; justify-content: center;">
     <div class="caja-menu" style="max-width: 440px; border-color: #2196f3;">
       <h2 style="color: #64b5f6; font-size: 24px;">Lobby de Espera</h2>
@@ -120,7 +116,7 @@
           <span id="lobby-contador-jugadores">1 ninja</span>
         </div>
         <div id="lobby-lista-jugadores" style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px; max-height: 160px; overflow-y: auto;">
-          <!-- Items de jugadores conectados -->
+
         </div>
       </div>
 
@@ -133,12 +129,10 @@
     </div>
   </div>
 
-  <!-- 2. PANTALLA DE CONFIGURACIONES (AUDIO, LUCES E ILUMINACION FOCAL Y AMBIENTAL) -->
   <div id="modal-opciones">
     <div class="caja-menu" style="max-width: 380px;">
       <h3 style="color: #ffb74d;">Configuraciones</h3>
-      
-      <!-- AJUSTES DE VOLUMEN (MUSICA Y SFX KATANA) -->
+
       <div style="background: #111111; border: 1px solid #444; border-radius: 4px; padding: 10px; margin: 8px 0; text-align: left;">
         <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
           <span>Volumen Música:</span>
@@ -186,12 +180,9 @@
     </div>
   </div>
 
-  <!-- 3. PANTALLA DE PUNTUACIONES (SERVICIO WEB REST + SOCIAL SHARE) -->
   <div id="modal-puntuaciones" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); z-index: 120; align-items: center; justify-content: center;">
     <div class="caja-menu" style="max-width: 420px;">
       <h3 style="color: #64b5f6;">Tabla de Puntuaciones</h3>
-      <p style="font-size: 11px; color: #888; margin: 0 0 8px 0;">Consumiendo Servicio Web REST (/api/puntuaciones)</p>
-      
       <div id="lista-puntuaciones-tabla" style="text-align: left; max-height: 150px; overflow-y: auto; background: #111111; padding: 8px; border: 1px solid #444444; font-size: 13px;">
         Cargando puntuaciones...
       </div>
@@ -210,7 +201,6 @@
     </div>
   </div>
 
-  <!-- 4. PANTALLA DE PAUSA -->
   <div id="menu-pausa">
     <div class="caja-menu" style="max-width: 340px;">
       <h3 style="color: #ffb74d;">Dojo en Pausa</h3>
@@ -220,7 +210,6 @@
     </div>
   </div>
 
-  <!-- 5. PANTALLA FIN DE JUEGO / GAME OVER -->
   <div id="pantalla-gameover" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.85); z-index: 110; align-items: center; justify-content: center;">
     <div class="caja-menu" style="max-width: 380px;">
       <h2 id="gameover-titulo" style="color: #e53935; font-size: 26px;">¡GAME OVER!</h2>

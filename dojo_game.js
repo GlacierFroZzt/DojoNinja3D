@@ -2,19 +2,14 @@ import * as THREE from 'three';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
 
-// =============================================================
-// 1. SISTEMA DE AUDIO (KATANA SFX, MÚSICA EN LOOP Y VOLUMEN)
-// Cumple: "Efectos de sonido y música de fondo"
-// =============================================================
 class SistemaSonido {
   constructor() {
     this.ctx = null;
     this.musicaActiva = false;
-    this.volumenMusica = 0.7; // 70% por defecto
-    this.volumenSFX = 0.8;    // 80% por defecto
+    this.volumenMusica = 0.7;
+    this.volumenSFX = 0.8;
     this.katanaBuffer = null;
 
-    // Recuperar preferencias guardadas de volumen
     try {
       const vm = localStorage.getItem('dojo_vol_musica');
       if (vm !== null) this.volumenMusica = parseFloat(vm);
@@ -22,7 +17,6 @@ class SistemaSonido {
       if (vs !== null) this.volumenSFX = parseFloat(vs);
     } catch (e) {}
 
-    // Música de fondo en loop infinito
     this.bgmAudio = new Audio('audio/musica.mp3');
     this.bgmAudio.loop = true;
     this.bgmAudio.volume = this.volumenMusica;
@@ -50,7 +44,6 @@ class SistemaSonido {
       .catch(() => {});
   }
 
-  // Reproducir sonido real de espadazo con la katana
   playEspadazo() {
     this.iniciar();
     if (this.volumenSFX <= 0) return;
@@ -68,7 +61,6 @@ class SistemaSonido {
       } catch (e) {}
     }
 
-    // Fallback con elemento Audio
     try {
       const a = new Audio('audio/katana.mp3');
       a.volume = this.volumenSFX;
@@ -169,9 +161,6 @@ class SistemaSonido {
 
 const audio = new SistemaSonido();
 
-// =============================================================
-// 2. CONFIGURACIÓN THREE.JS, CÁMARA Y RENDERER
-// =============================================================
 const container = document.getElementById('canvas-container');
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x141820);
@@ -188,11 +177,9 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 container.appendChild(renderer.domElement);
 
-// ILUMINACIÓN AMBIENTAL (Requisito Rúbrica)
 const luzAmbiental = new THREE.AmbientLight(0xffecc4, 1.2);
 scene.add(luzAmbiental);
 
-// ILUMINACIÓN FOCAL / SPOTLIGHT (Requisito Rúbrica)
 const luzFocal = new THREE.SpotLight(0xffffff, 3.5, 35, Math.PI / 4, 0.4, 1.2);
 luzFocal.position.set(0, 8, 4);
 luzFocal.castShadow = true;
@@ -200,10 +187,6 @@ luzFocal.shadow.mapSize.width = 1024;
 luzFocal.shadow.mapSize.height = 1024;
 scene.add(luzFocal);
 
-// =============================================================
-// 3. SISTEMA DE PARTÍCULAS
-// Cumple: "Uso de partículas"
-// =============================================================
 class SistemaParticulas {
   constructor() {
     this.total = 120;
@@ -271,19 +254,13 @@ class SistemaParticulas {
 
 const particulas = new SistemaParticulas();
 
-// =============================================================
-// 4. MAPAS Y ESCENARIOS TOTALMENTE DISTINTOS (3 Escenarios)
-// Cumple: "Debe contener al menos 3 escenarios totalmente distintos"
-// =============================================================
 const textureLoader = new THREE.TextureLoader();
 
-// Textura 1: Tatami original de dojo
 const texDojo = textureLoader.load('models/ninja/textures/dojo_floor.png');
 texDojo.wrapS = THREE.RepeatWrapping;
 texDojo.wrapT = THREE.RepeatWrapping;
 texDojo.repeat.set(6, 40);
 
-// Textura 2: Asfalto de carretera con líneas de neón
 function generarTexturaAsfalto() {
   const canvas = document.createElement('canvas');
   canvas.width = 512; canvas.height = 512;
@@ -291,19 +268,17 @@ function generarTexturaAsfalto() {
   ctx.fillStyle = '#111317';
   ctx.fillRect(0, 0, 512, 512);
 
-  // Textura de asfalto con ruido
   for (let i = 0; i < 2000; i++) {
     const rx = Math.random() * 512, ry = Math.random() * 512;
     ctx.fillStyle = Math.random() > 0.5 ? '#1a1f26' : '#0a0c0e';
     ctx.fillRect(rx, ry, 2, 2);
   }
 
-  // Líneas divisorias viales reflectivas de neón
   ctx.fillStyle = '#00e5ff';
   for (let y = 0; y < 512; y += 64) {
     ctx.fillRect(250, y + 10, 12, 40);
   }
-  // Bordes laterales
+
   ctx.fillStyle = '#ff007f';
   ctx.fillRect(10, 0, 8, 512);
   ctx.fillRect(494, 0, 8, 512);
@@ -316,7 +291,6 @@ function generarTexturaAsfalto() {
 }
 const texAsfalto = generarTexturaAsfalto();
 
-// Textura 3: Lava volcánica incandescente y roca basáltica
 function generarTexturaLava() {
   const canvas = document.createElement('canvas');
   canvas.width = 512; canvas.height = 512;
@@ -324,7 +298,6 @@ function generarTexturaLava() {
   ctx.fillStyle = '#ff3d00';
   ctx.fillRect(0, 0, 512, 512);
 
-  // Grietas de fuego
   ctx.strokeStyle = '#ffee55';
   ctx.lineWidth = 6;
   for (let i = 0; i < 16; i++) {
@@ -334,7 +307,6 @@ function generarTexturaLava() {
     ctx.stroke();
   }
 
-  // Costras de roca basáltica oscura
   for (let i = 0; i < 50; i++) {
     const rx = Math.random() * 512, ry = Math.random() * 512, rad = 15 + Math.random() * 30;
     ctx.fillStyle = '#1e0804';
@@ -365,7 +337,6 @@ suelo.position.set(0, 0, -35);
 suelo.receiveShadow = true;
 scene.add(suelo);
 
-// Paredes / Muros laterales
 const muroGeo = new THREE.BoxGeometry(0.8, 5, largoPista);
 const muroMat = new THREE.MeshStandardMaterial({ color: 0x2b2218, roughness: 0.9 });
 const muroIzq = new THREE.Mesh(muroGeo, muroMat);
@@ -378,7 +349,6 @@ muroDer.position.set(anchoPista / 2 + 0.4, 2.5, -35);
 muroDer.receiveShadow = true;
 scene.add(muroDer);
 
-// Columnas y Pilares Ambientales (Torii / Neón / Magma)
 const listaColumnas = [];
 const colGeo = new THREE.BoxGeometry(0.6, 6, 0.6);
 const colMat = new THREE.MeshStandardMaterial({ color: 0x8b1a1a, roughness: 0.5 });
@@ -403,7 +373,7 @@ function aplicarEscenario(esc) {
   escenarioActual = esc;
 
   if (esc === 'noche' || esc === 'ciudad') {
-    // Escenario 2: Asfalto de Noche (Ciudad Cyberpunk)
+
     scene.background = new THREE.Color(0x050814);
     scene.fog.color.setHex(0x060c18);
     scene.fog.density = 0.014;
@@ -415,14 +385,14 @@ function aplicarEscenario(esc) {
     sueloMat.needsUpdate = true;
 
     muroMat.color.setHex(0x0c1424);
-    colMat.color.setHex(0x00e5ff); // Postes de luz neón cian
+    colMat.color.setHex(0x00e5ff);
     colMat.emissive = new THREE.Color(0x004488);
 
     luzAmbiental.color.setHex(0x5c7cfa);
     luzAmbiental.intensity = 1.1;
     luzFocal.color.setHex(0x00e5ff);
   } else if (esc === 'lava' || esc === 'volcan') {
-    // Escenario 3: Volcán de Fuego (Lava incandescente)
+
     scene.background = new THREE.Color(0x200502);
     scene.fog.color.setHex(0x280602);
     scene.fog.density = 0.018;
@@ -434,14 +404,14 @@ function aplicarEscenario(esc) {
     sueloMat.needsUpdate = true;
 
     muroMat.color.setHex(0x1a0604);
-    colMat.color.setHex(0xff3d00); // Pilares de basalto con magma
+    colMat.color.setHex(0xff3d00);
     colMat.emissive = new THREE.Color(0x661100);
 
     luzAmbiental.color.setHex(0xff5722);
     luzAmbiental.intensity = 1.4;
     luzFocal.color.setHex(0xff9100);
   } else {
-    // Escenario 1: Tatami Tradicional (Dojo Japonés)
+
     scene.background = new THREE.Color(0x141820);
     scene.fog.color.setHex(0x141820);
     scene.fog.density = 0.012;
@@ -453,7 +423,7 @@ function aplicarEscenario(esc) {
     sueloMat.needsUpdate = true;
 
     muroMat.color.setHex(0x2b2218);
-    colMat.color.setHex(0x8b1a1a); // Columnas rojas Torii tradicionales
+    colMat.color.setHex(0x8b1a1a);
     colMat.emissive = new THREE.Color(0x000000);
 
     luzAmbiental.color.setHex(0xffecc4);
@@ -462,9 +432,6 @@ function aplicarEscenario(esc) {
   }
 }
 
-// =============================================================
-// 5. CARGA DE MODELOS OBJ ORIGINALES DE GITHUB (Ninja y Shuriken)
-// =============================================================
 const texTraje = textureLoader.load('models/ninja/textures/ninja_suit.png');
 const texAcento = textureLoader.load('models/ninja/textures/ninja_accent.png');
 const texMetal = textureLoader.load('models/shuriken/textures/shuriken_metal.png');
@@ -474,7 +441,7 @@ let plantillaShuriken = null;
 
 function crearModeloKatana() {
   const grupoKatana = new THREE.Group();
-  
+
   const hojaGeo = new THREE.BoxGeometry(0.04, 1.1, 0.08);
   const hojaMat = new THREE.MeshStandardMaterial({
     color: 0xeeeeee,
@@ -571,7 +538,6 @@ function cargarShuriken() {
   });
 }
 
-// Fallback temporal en caso de retraso en red
 function crearNinjaFallback(colorRopa = 0x153b54) {
   const g = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({ color: colorRopa, roughness: 0.7 });
@@ -583,9 +549,6 @@ function crearNinjaFallback(colorRopa = 0x153b54) {
   return g;
 }
 
-// =============================================================
-// 6. CLASE JUGADOR NINJA (CON MODELO ORIGINAL OBJ)
-// =============================================================
 class JugadorNinja {
   constructor(datos, esPropio = false) {
     this.id = datos.id;
@@ -594,18 +557,16 @@ class JugadorNinja {
     this.color = datos.color || { hex: 0x2980b9, ropa: 0x153b54, cinta: 0xffffff };
     this.root = new THREE.Group();
     this.root.position.set(datos.x || 0, datos.y || 0, datos.z || 0);
-    this.root.rotation.y = Math.PI; // En Three.js, Math.PI orienta al ninja corriendo hacia adelante (-Z)
+    this.root.rotation.y = Math.PI;
 
     this.modelo = null;
     this.asignarModelo();
 
-    // Katana para la animación de parry
     this.katana = crearModeloKatana();
     this.katana.position.set(0.4, 0.9, 0.4);
     this.katana.rotation.set(-0.3, 0, -0.4);
     this.root.add(this.katana);
 
-    // Esfera de Escudo Sagrado
     const geoEscudo = new THREE.SphereGeometry(1.6, 16, 16);
     const matEscudo = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.35, wireframe: true });
     this.escudoMesh = new THREE.Mesh(geoEscudo, matEscudo);
@@ -615,7 +576,6 @@ class JugadorNinja {
     this.escudoTimer = 0;
     this.estaMuerto = false;
 
-    // Etiqueta flotante con nombre
     this.etiqueta = this.crearEtiqueta(this.esPropio ? `${this.nombre} (Tú)` : this.nombre);
     this.root.add(this.etiqueta);
 
@@ -750,7 +710,6 @@ class JugadorNinja {
       this.modelo.rotation.z = 0;
     }
 
-    // Animación de la katana durante el parry
     if (this.parryTimer > 0) {
       this.parryTimer -= delta;
       const progreso = 1 - Math.max(0, this.parryTimer / 0.28);
@@ -762,7 +721,6 @@ class JugadorNinja {
       this.katana.rotation.set(-0.35, 0, -0.35);
     }
 
-    // Escudo Sagrado
     if (this.escudoTimer > 0) {
       this.escudoTimer -= delta;
       this.escudoMesh.visible = true;
@@ -781,19 +739,12 @@ class JugadorNinja {
   }
 }
 
-// Instanciar jugador propio
 const jugador = new JugadorNinja({
   id: 'jugador_propio',
   nombre: 'Ninja Shinobi',
   x: 0, y: 0, z: 0,
   color: { hex: 0x2980b9, ropa: 0x153b54, cinta: 0xffffff }
 }, true);
-
-// =============================================================
-// 7. MULTIJUGADOR EN TIEMPO REAL (WEBSOCKET CLOUD RELAY + WEBRTC)
-// Comunicación directa en tiempo real compatible con cualquier navegador (incluyendo Brave),
-// redes móviles 4G/5G, Wi-Fi con CGNAT y routers residenciales sin bloqueos.
-// =============================================================
 
 class RelayWebSocket {
   constructor(roomCode, onMessage, onReady) {
@@ -829,16 +780,16 @@ class RelayWebSocket {
       this.ws.onmessage = (e) => {
         const buf = new Uint8Array(e.data);
         const tipo = buf[0] >> 4;
-        if (tipo === 2) { // CONNACK
+        if (tipo === 2) {
           this.enviarSubscribe(this.topic);
           if (this.onReady) this.onReady();
           if (this.pingInterval) clearInterval(this.pingInterval);
           this.pingInterval = setInterval(() => {
             if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-              this.ws.send(new Uint8Array([0xC0, 0x00])); // PINGREQ
+              this.ws.send(new Uint8Array([0xC0, 0x00]));
             }
           }, 25000);
-        } else if (tipo === 3) { // PUBLISH
+        } else if (tipo === 3) {
           let pos = 1;
           let multiplier = 1;
           let remainingLength = 0;
@@ -1031,7 +982,6 @@ class RedDojo {
   iniciarCanalesHost(codigo) {
     const canalNombre = 'dojo3d_room_' + codigo.toLowerCase();
 
-    // 1. Relay WebSocket Cloud (Funciona 100% garantizado en Brave, Chrome, Wi-Fi y celulares)
     this.relay = new RelayWebSocket(codigo, (msg) => {
       this.procesarMensajeHost(msg);
     }, () => {
@@ -1043,7 +993,6 @@ class RedDojo {
       }
     });
 
-    // 2. BroadcastChannel (mismo navegador / distintas pestañas en Vercel)
     if (typeof BroadcastChannel !== 'undefined') {
       try {
         this.broadcastChannel = new BroadcastChannel(canalNombre);
@@ -1056,7 +1005,7 @@ class RedDojo {
 
   procesarMensajeHost(msg, connDirecta = null) {
     if (!msg || !this.isHost) return;
-    if (msg.remitenteId && msg.remitenteId === this.miId) return; // ignorar mis propios mensajes de broadcast
+    if (msg.remitenteId && msg.remitenteId === this.miId) return;
 
     if (msg.tipo === 'JOIN_REQUEST') {
       const gId = msg.guestId;
@@ -1152,10 +1101,9 @@ class RedDojo {
       }
     }, 10000);
 
-    // 1. Relay WebSocket Cloud (Conexión instantánea entre diferentes computadoras)
     this.relay = new RelayWebSocket(cod, (msg) => {
       if (!msg) return;
-      if (msg.remitenteId && msg.remitenteId === this.miId) return; // ignorar mis propios mensajes
+      if (msg.remitenteId && msg.remitenteId === this.miId) return;
       if (msg.tipo === 'LOBBY_UPDATE' || msg.tipo === 'MATCH_STARTED') {
         conectado = true;
         if (this.timerUnirse) clearTimeout(this.timerUnirse);
@@ -1169,7 +1117,6 @@ class RedDojo {
       setTimeout(() => { if (!conectado && this.relay) this.relay.publicar(req); }, 2500);
     });
 
-    // 2. BroadcastChannel (para pestañas en el mismo navegador)
     if (typeof BroadcastChannel !== 'undefined') {
       try {
         this.broadcastChannel = new BroadcastChannel(canalNombre);
@@ -1374,7 +1321,7 @@ class RedDojo {
   }
 
   entrarJuego(datos) {
-    // Listo para sincronización
+
   }
 
   enviarMovimiento(pos) {
@@ -1698,7 +1645,6 @@ red.on('muerteJugador', (datos) => {
     otrosJugadores[datos.id].morir();
   }
 
-  // Comprobar si queda algún ninja con vida en la partida
   const quedaAlguienVivo = !jugador.estaMuerto || Object.values(otrosJugadores).some(p => !p.estaMuerto);
   if (!quedaAlguienVivo) {
     const motivo = '¡Todos los ninjas han caído!';
@@ -1727,11 +1673,6 @@ red.on('partidaTerminada', (datos) => {
   }
 });
 
-// =============================================================
-// 9. ÍTEMS ESPECIALES PROCEDURALES (3 Ítems)
-// Cumple: "Uso de 'ítems' (objetos especiales) (3 como mínimo)"
-// =============================================================
-// ÍTEM 1: Pergamino Sagrado (+100 Puntos)
 function crearPergaminoMesh() {
   const g = new THREE.Group();
   const matPapel = new THREE.MeshStandardMaterial({
@@ -1755,7 +1696,6 @@ function crearPergaminoMesh() {
   return g;
 }
 
-// ÍTEM 2: Poción de Salud Roja (+1 Vida)
 function crearPocionMesh() {
   const g = new THREE.Group();
   const frascoMat = new THREE.MeshStandardMaterial({
@@ -1777,7 +1717,6 @@ function crearPocionMesh() {
   return g;
 }
 
-// ÍTEM 3: Escudo Sagrado (Absorbe impactos)
 function crearEscudoItemMesh() {
   const g = new THREE.Group();
   const matEscudo = new THREE.MeshStandardMaterial({
@@ -1804,7 +1743,7 @@ function crearShurikenMesh() {
     s.rotation.set(Math.PI / 2, 0, 0);
     return s;
   }
-  // Fallback procedural
+
   const g = new THREE.Group();
   const matMetal = new THREE.MeshStandardMaterial({ color: 0x90a4ae, metalness: 0.95, roughness: 0.2 });
   const centro = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.08, 8), matMetal);
@@ -1821,14 +1760,9 @@ function crearShurikenMesh() {
   return g;
 }
 
-// =============================================================
-// SHURIKEN CARMESÍ PERSEGUIDOR (PROYECTIL INCANDESCENTE TELEDIRIGIDO)
-// Mecánica de persecución y parry obligatorio
-// =============================================================
 function crearShurikenIAMesh(targetNombre = '') {
   const g = new THREE.Group();
 
-  // Material brillante incandescente con emisión de luz roja / carmesí
   const matMetalCarmesi = new THREE.MeshStandardMaterial({
     color: 0xff1744,
     emissive: 0xff1744,
@@ -1862,12 +1796,10 @@ function crearShurikenIAMesh(targetNombre = '') {
   g.add(shurikenMesh);
   g.shurikenMesh = shurikenMesh;
 
-  // Luz dinámica propia que ilumina la pista en tiempo real
   const luzCarmesi = new THREE.PointLight(0xff1744, 3.8, 9);
   luzCarmesi.position.set(0, 0.2, 0);
   g.add(luzCarmesi);
 
-  // Etiqueta flotante holográfica sobre el shuriken perseguidor
   const canvasEtiqueta = document.createElement('canvas');
   canvasEtiqueta.width = 320; canvasEtiqueta.height = 64;
   const ctx = canvasEtiqueta.getContext('2d');
@@ -1896,14 +1828,11 @@ function crearShurikenIAMesh(targetNombre = '') {
   return g;
 }
 
-// =============================================================
-// 10. ESTADO DEL JUEGO Y CONTROLES (CON TECLA ESCAPE PARA PAUSA)
-// =============================================================
 let juegoActivo = false;
 let juegoPausado = false;
 let vidas = 3;
 let puntos = 0;
-let tiempo = 30; // 30 segundos fijos según rúbrica
+let tiempo = 30;
 let modoActual = 'esquivar';
 let dificultadActual = 'facil';
 let velocidadObstaculos = 18;
@@ -1933,7 +1862,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === ' ' || e.code === 'Space' || e.key === 'f' || e.key === 'F' || e.key === 'e' || e.key === 'E') {
     ejecutarEspadazo();
   }
-  // PAUSA CON TECLA ESCAPE O P
+
   if (e.key === 'Escape' || e.key === 'Esc' || e.key === 'p' || e.key === 'P') {
     e.preventDefault();
     alternarPausa();
@@ -1960,7 +1889,6 @@ window.addEventListener('keyup', (e) => {
   if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') teclas.derecha = false;
 });
 
-// Listener en tiempo real para cambio de escenario en el selector
 const selEscenarioEl = document.getElementById('sel-escenario');
 if (selEscenarioEl) {
   selEscenarioEl.addEventListener('change', (e) => {
@@ -1968,9 +1896,6 @@ if (selEscenarioEl) {
   });
 }
 
-// =============================================================
-// 11. GENERACIÓN DE ELEMENTOS (OBSTÁCULOS E ÍTEMS)
-// =============================================================
 let obstaculos = [];
 let spawnTimer = 0;
 let iaShurikenTimer = 3.5;
@@ -2012,9 +1937,9 @@ function crearElementoPorTipo(tipo, posX, idObstaculo = null, targetId = null, t
 
 function puedeGenerarObstaculos() {
   if (red.codigoSala) {
-    return red.isHost; // En multijugador, ÚNICAMENTE el anfitrión genera los obstáculos para que ambos vean exactamente los mismos
+    return red.isHost;
   }
-  return true; // En modo individual/solitario, el jugador genera sus propios obstáculos
+  return true;
 }
 
 function obtenerObjetivoVivoParaIA() {
@@ -2034,14 +1959,13 @@ function obtenerObjetivoVivoParaIA() {
 }
 
 function generarElemento(delta) {
-  // Solo el anfitrión genera los obstáculos de la sala (o el jugador en solitario)
+
   if (!puedeGenerarObstaculos() || !juegoActivo || juegoPausado) {
     return;
   }
 
   const numJugadoresConectados = 1 + Object.keys(otrosJugadores).length;
 
-  // Generación especial del Shuriken Carmesí perseguidor brillante
   iaShurikenTimer += delta;
   const baseIntervaloPerseguidor = dificultadActual === 'dificil' ? 6.5 : 8.5;
   const intervaloPerseguidor = numJugadoresConectados > 1 ? (baseIntervaloPerseguidor * 0.75) : baseIntervaloPerseguidor;
@@ -2069,7 +1993,7 @@ function generarElemento(delta) {
   }
 
   spawnTimer += delta;
-  // Frecuencia proporcional al número de jugadores:
+
   const baseFreq = dificultadActual === 'dificil' ? 0.6 : 0.85;
   const factorMulti = numJugadoresConectados > 1 ? 0.6 : 1.0;
   const frecuencia = baseFreq * factorMulti;
@@ -2077,18 +2001,15 @@ function generarElemento(delta) {
   if (spawnTimer >= frecuencia) {
     spawnTimer = 0;
 
-    // Con múltiples jugadores generamos 2 shurikens proporcionales en carriles separados
-    // (carril izquierdo para jugador anfitrión y carril derecho para invitado)
-    // para que ambos ninjas tengan amenazas simultáneas llegando al mismo tiempo
     const cantidadASpawnear = numJugadoresConectados > 1 ? 2 : 1;
 
     for (let s = 0; s < cantidadASpawnear; s++) {
       let posX;
       if (numJugadoresConectados > 1) {
         if (s === 0) {
-          posX = -0.5 - (Math.random() * 3.3); // Carril izquierdo (-0.5 a -3.8)
+          posX = -0.5 - (Math.random() * 3.3);
         } else {
-          posX = 0.5 + (Math.random() * 3.3);  // Carril derecho (0.5 a 3.8)
+          posX = 0.5 + (Math.random() * 3.3);
         }
       } else {
         posX = (Math.random() * 8) - 4;
@@ -2130,9 +2051,6 @@ function flashImpacto() {
   }
 }
 
-// =============================================================
-// 12. DETECCIÓN Y USO DE COLISIONES
-// =============================================================
 function procesarColisiones() {
   const localPos = jugador.root.position;
   const esParry = parryTimer > 0;
@@ -2145,7 +2063,6 @@ function procesarColisiones() {
     const dx = Math.abs(obj.position.x - localPos.x);
     const dz = obj.position.z - localPos.z;
 
-    // Colisión física con jugador local (solo si sigue vivo)
     if (!jugador.estaMuerto && dx < 1.15 && Math.abs(dz) < 1.0) {
       scene.remove(obj);
       obstaculos.splice(i, 1);
@@ -2191,7 +2108,7 @@ function procesarColisiones() {
           mostrarAviso('hud-aviso-parry', '¡PARRY PERFECTO AL SHURIKEN! +300', 1400);
           red.enviarImpactoObstaculo({ id: obj.idObstaculo, tipo: 'parry_ia', x: obj.position.x, z: obj.position.z });
         } else {
-          // El shuriken perseguidor se DEBÍA parrear sí o sí: rompe el escudo si lo tenía, o quita vida
+
           if (conEscudo) {
             jugador.escudoTimer = 0;
             if (jugador.escudoMesh) jugador.escudoMesh.visible = false;
@@ -2275,7 +2192,6 @@ function procesarColisiones() {
       continue;
     }
 
-    // Pasó de largo
     if (obj.position.z > 6) {
       scene.remove(obj);
       obstaculos.splice(i, 1);
@@ -2288,9 +2204,6 @@ function procesarColisiones() {
   }
 }
 
-// =============================================================
-// 13. BUCLE DE RENDERIZADO Y ANIMACIÓN
-// =============================================================
 const clock = new THREE.Clock();
 
 function animate() {
@@ -2313,7 +2226,6 @@ function animate() {
 
     jugador.actualizar(delta, seMueve);
 
-    // Si estoy muerto, enfocar con la luz focal al compañero que sigue vivo
     if (jugador.estaMuerto) {
       const companeroVivo = Object.values(otrosJugadores).find(p => !p.estaMuerto);
       if (companeroVivo) {
@@ -2325,10 +2237,8 @@ function animate() {
       luzFocal.target = jugador.root;
     }
 
-    // Multijugador: Enviar posición en tiempo real
     red.enviarMovimiento({ x: jugador.root.position.x, y: 0, z: 0 });
 
-    // Actualizar ninjas de jugadores remotos
     Object.values(otrosJugadores).forEach((p) => {
       if (p) {
         const distancia = Math.abs(p.targetPos.x - p.root.position.x);
@@ -2337,7 +2247,6 @@ function animate() {
       }
     });
 
-    // Obstáculos (sincronizados por el anfitrión)
     generarElemento(delta);
     for (let i = 0; i < obstaculos.length; i++) {
       const obs = obstaculos[i];
@@ -2354,7 +2263,6 @@ function animate() {
           particulas.emitir(obs.position, 0xff1744, 2);
         }
 
-        // Persecución activa del objetivo asignado
         let targetNinja = null;
         if (obs.targetId === red.miId) {
           if (!jugador.estaMuerto) targetNinja = jugador;
@@ -2362,7 +2270,6 @@ function animate() {
           if (!otrosJugadores[obs.targetId].estaMuerto) targetNinja = otrosJugadores[obs.targetId];
         }
 
-        // Si el objetivo cayó, reorientar el proyectil al ninja sobreviviente
         if (!targetNinja) {
           if (!jugador.estaMuerto) {
             targetNinja = jugador;
@@ -2379,7 +2286,7 @@ function animate() {
         if (targetNinja) {
           const targetX = targetNinja.root.position.x;
           const difX = targetX - obs.position.x;
-          const velGiro = 6.2; // Velocidad de persecución lateral
+          const velGiro = 6.2;
           if (Math.abs(difX) > 0.04) {
             obs.position.x += Math.sign(difX) * Math.min(Math.abs(difX), velGiro * delta);
           }
@@ -2399,9 +2306,6 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-// =============================================================
-// 14. CONTROL DE MENÚS Y FLUJO DE PARTIDA
-// =============================================================
 function actualizarHUD() {
   document.getElementById('hud-puntos').textContent = puntos;
   document.getElementById('hud-tiempo').textContent = `TIEMPO 00:${tiempo < 10 ? '0' : ''}${tiempo}`;
@@ -2429,7 +2333,7 @@ function empezarPartida() {
   velocidadObstaculos = dificultadActual === 'dificil' ? 24 : 17;
   vidas = 3;
   puntos = 0;
-  tiempo = 30; // 30s fijos
+  tiempo = 30;
   juegoActivo = true;
   juegoPausado = false;
   parryTimer = 0;
@@ -2451,14 +2355,13 @@ function empezarPartida() {
 
   const nombre = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja';
 
-  // Limpiar personajes remotos previos
   Object.keys(otrosJugadores).forEach(id => {
     if (otrosJugadores[id]) otrosJugadores[id].destruir();
   });
   otrosJugadores = {};
 
   if (red.isHost) {
-    // ANFITRIÓN: Azul (0x153b54), carril izquierdo (x = -1.5)
+
     jugador.revivir(`${nombre} (Tú - Anfitrión)`, 0x153b54, -1.5);
 
     const guestId = Object.keys(red.jugadores || {}).find(id => id !== red.miId);
@@ -2473,7 +2376,7 @@ function empezarPartida() {
       otrosJugadores[guestId].actualizarEtiqueta(`${guestNombre} (Invitado)`);
     }
   } else {
-    // INVITADO: Rojo (0x881111), carril derecho (x = 1.5)
+
     jugador.revivir(`${nombre} (Tú)`, 0x881111, 1.5);
 
     const hostId = red.anfitrionId || Object.keys(red.jugadores || {}).find(id => id !== red.miId);
@@ -2489,12 +2392,11 @@ function empezarPartida() {
     }
   }
 
-  // Temporizador de partida sincronizado por el anfitrión (o relevo)
   if (intervaloTiempo) clearInterval(intervaloTiempo);
   intervaloTiempo = setInterval(() => {
     if (!juegoPausado && juegoActivo) {
       if (!puedeGenerarObstaculos()) {
-        return; // El invitado sincroniza el tiempo con el anfitrión
+        return;
       }
       tiempo--;
       actualizarHUD();
@@ -2508,11 +2410,6 @@ function empezarPartida() {
     }
   }, 1000);
 }
-
-// =============================================================
-// GESTIÓN ROBUSTA DE PUNTUACIONES (LOCALSTORAGE + NUBE MQTT RETAINED + REST API)
-// Sincronización en tiempo real y persistencia garantizada en Vercel y móviles
-// =============================================================
 
 function obtenerPuntuacionesLocales() {
   try {
@@ -2673,7 +2570,7 @@ class GestorPuntuacionesNube {
       } while (x > 0);
 
       const packet = new Uint8Array(1 + lenBytes.length + remLen);
-      packet[0] = 0x31; // RETAIN = 1! Persistencia garantizada en la nube pública
+      packet[0] = 0x31;
       packet.set(lenBytes, 1);
       packet.set(topicArr, 1 + lenBytes.length);
       packet.set(payload, 1 + lenBytes.length + topicArr.length);
@@ -2709,16 +2606,12 @@ function terminarJuego(motivo) {
     fecha: Date.now()
   };
 
-  // 1. Guardar en almacenamiento local
   const listaCombinada = agregarPuntuacionLocal(nuevoScore);
 
-  // 2. Transmitir en vivo a la sala multijugador para el compañero de partida
   red.enviarPuntuacion(nuevoScore);
 
-  // 3. Persistir en la nube global (MQTT retained)
   gestorPuntuacionesNube.publicarScores(listaCombinada);
 
-  // 4. Enviar al servicio REST API (/api/puntuaciones)
   fetch('/api/puntuaciones', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2781,9 +2674,6 @@ function volverAlMenu() {
   document.getElementById('hud-juego').style.display = 'none';
 }
 
-// =============================================================
-// 15. LISTENERS DE BOTONES Y MENÚS
-// =============================================================
 function vincularClick(id, fn) {
   const el = document.getElementById(id);
   if (el) el.onclick = fn;
@@ -2796,7 +2686,6 @@ vincularClick('btn-salir-menu', volverAlMenu);
 vincularClick('btn-pausa-salir', volverAlMenu);
 vincularClick('btn-gameover-salir', volverAlMenu);
 
-// BOTONES DE SALA Y LOBBY
 vincularClick('btn-crear-sala', () => {
   const nombre = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja Shinobi';
   red.crearSala(nombre);
@@ -2855,7 +2744,6 @@ if (btnSonido) {
   };
 }
 
-// Controles de volumen de música y efectos (katana)
 const sliderMusica = document.getElementById('slider-vol-musica');
 const valMusica = document.getElementById('val-vol-musica');
 const sliderSFX = document.getElementById('slider-vol-sfx');
@@ -2997,10 +2885,6 @@ vincularClick('btn-cerrar-puntuaciones', () => {
   if (m) m.style.display = 'none';
 });
 
-// =============================================================
-// 16. COMPARTIR EN REDES SOCIALES (Facebook, Twitter o Instagram, WhatsApp)
-// Cumple: "Facebook, Twitter o Instagram"
-// =============================================================
 function compartirWhatsApp() {
   const t = encodeURIComponent(`¡Logré ${puntos} puntos en el Dojo Ninja 3D! ¿Puedes superarme?`);
   window.open(`https://api.whatsapp.com/send?text=${t}`, '_blank');
@@ -3028,13 +2912,10 @@ vincularClick('btn-gameover-twitter', compartirTwitter);
 vincularClick('btn-gameover-facebook', compartirFacebook);
 vincularClick('btn-gameover-instagram', compartirInstagram);
 
-// =============================================================
-// 17. INICIALIZACIÓN CON CARGA DE MODELOS OBJ
-// =============================================================
 async function init() {
   try {
     await Promise.all([cargarNinja(), cargarShuriken()]);
-    // Asignar el modelo OBJ cargado al jugador y multijugador
+
     if (jugador) jugador.asignarModelo();
     Object.values(otrosJugadores).forEach(j => j.asignarModelo());
     console.log('Modelos OBJ originales del Ninja y Shuriken cargados con éxito!');
@@ -3042,7 +2923,6 @@ async function init() {
     console.warn('Carga asíncrona completada con fallback activo:', err);
   }
 
-  // Ocultar pantalla de carga
   const pCarga = document.getElementById('pantalla-carga');
   if (pCarga) pCarga.style.display = 'none';
 
@@ -3050,3 +2930,4 @@ async function init() {
 }
 
 init();
+

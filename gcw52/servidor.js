@@ -12,9 +12,6 @@ app.use(express.json());
 app.use(express.static(__dirname));
 app.use(express.static(path.join(__dirname, '..')));
 
-// ==========================================
-// 1. SERVICIO WEB (API REST SIMPLE - RÚBRICA REQ 7)
-// ==========================================
 const DB_LOCAL_FILE = path.join(__dirname, 'puntuaciones_db.json');
 const DEFAULT_SCORES_SRV = [
   { nombre: 'Sensei Ryu', puntos: 520, dificultad: 'Dificil', escenario: 'Noche' },
@@ -42,13 +39,11 @@ function guardarPuntServidor(lista) {
 
 let puntuaciones = cargarPuntServidor();
 
-// GET: Consultar puntuaciones (Servicio Web)
 app.get('/api/puntuaciones', (req, res) => {
   puntuaciones = cargarPuntServidor();
   res.json(puntuaciones);
 });
 
-// POST: Guardar nueva puntuacion (Servicio Web)
 app.post('/api/puntuaciones', (req, res) => {
   puntuaciones = cargarPuntServidor();
   const nueva = {
@@ -69,11 +64,6 @@ app.post('/api/puntuaciones', (req, res) => {
   res.json({ ok: true, mensaje: 'Guardado con exito' });
 });
 
-// ==========================================
-// 2. SISTEMA DE SALAS Y LOBBY (SOCKET.IO MULTIJUGADOR)
-// ==========================================
-// Estructura de salas:
-// salas[codigo] = { codigo, anfitrionId, jugadores: {}, estado: 'lobby' | 'jugando' }
 const salas = {};
 
 function generarCodigoSala() {
@@ -170,14 +160,12 @@ io.on('connection', (socket) => {
     }
   }
 
-  // Partida rápida tradicional (entra directo a GLOBAL)
   socket.on('entrarJuego', (datos) => {
     const nombre = datos ? (datos.nombre || datos.userName) : null;
     const salaPedida = datos && datos.codigoSala ? datos.codigoSala : 'GLOBAL';
     unirASala(salaPedida, nombre, false);
   });
 
-  // Crear sala nueva privada con código único y lobby
   socket.on('createRoom', (datos) => {
     let codigo = generarCodigoSala();
     while (salas[codigo]) {
@@ -187,7 +175,6 @@ io.on('connection', (socket) => {
     unirASala(codigo, nombre, true);
   });
 
-  // Unirse a una sala privada existente mediante código
   socket.on('joinRoom', (datos) => {
     const rawCodigo = datos && datos.roomCode ? datos.roomCode.trim().toUpperCase() : '';
     const nombre = datos ? (datos.userName || datos.nombre) : null;
@@ -204,7 +191,6 @@ io.on('connection', (socket) => {
     unirASala(rawCodigo, nombre, entrarEnLobby);
   });
 
-  // El anfitrión inicia la partida para todos en la sala
   socket.on('startLobbyMatch', () => {
     const codigoSala = socket.codigoSala;
     if (codigoSala && salas[codigoSala]) {
@@ -219,7 +205,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Movimiento de jugador en tiempo real (solo se envía a los miembros de la misma sala)
   socket.on('mover', (pos) => {
     const codigoSala = socket.codigoSala;
     if (codigoSala && salas[codigoSala] && salas[codigoSala].jugadores[idJugador]) {
@@ -235,7 +220,6 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Salir de partida o lobby
   socket.on('leaveGame', () => {
     eliminarJugadorDeSala(socket);
   });
@@ -257,3 +241,4 @@ if (require.main === module) {
 }
 
 module.exports = server;
+

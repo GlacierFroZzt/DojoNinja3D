@@ -58,3 +58,4 @@ module.exports = (req, res) => {
   puntuaciones = cargarPuntuaciones();
   return res.status(200).json(puntuaciones);
 };
+
