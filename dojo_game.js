@@ -793,6 +793,20 @@ const jugador = new JugadorNinja({
 // 7. MULTIJUGADOR EN TIEMPO REAL (P2P WEBRTC / BROADCASTCHANNEL)
 // Comunicación directa entre navegadores sin servidores locales ni dependencias externas
 // =============================================================
+const PEER_CONFIG = {
+  debug: 1,
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' }
+    ]
+  }
+};
+
 class RedDojo {
   constructor() {
     this.peer = null;
@@ -877,16 +891,54 @@ class RedDojo {
     if (typeof Peer !== 'undefined') {
       try {
         const peerId = 'dojoninja-' + codigo.toLowerCase();
-        this.peer = new Peer(peerId);
+        this.peer = new Peer(peerId, PEER_CONFIG);
+
+        this.peer.on('open', (id) => {
+          console.log('[PeerJS Host] En línea con ID:', id);
+          const estadoEl = document.getElementById('lobby-estado-red');
+          if (estadoEl) {
+            estadoEl.textContent = 'En línea — Código listo para compartir';
+            estadoEl.style.color = '#a5d6a7';
+          }
+        });
+
         this.peer.on('connection', (conn) => {
           this.peerConexiones.set(conn.peer, conn);
+
+          const responderLobby = () => {
+            const respuesta = {
+              tipo: 'LOBBY_UPDATE',
+              codigoSala: this.codigoSala,
+              anfitrionId: this.anfitrionId,
+              jugadores: this.jugadores
+            };
+            try { conn.send(respuesta); } catch (e) {}
+          };
+
+          if (conn.open) {
+            responderLobby();
+          } else {
+            conn.on('open', responderLobby);
+          }
+
           conn.on('data', (data) => this.procesarMensajeHost(data, conn));
           conn.on('close', () => {
             this.peerConexiones.delete(conn.peer);
           });
+          conn.on('error', (err) => {
+            console.warn('[PeerJS Host Conn Error]', err);
+          });
         });
+
         this.peer.on('error', (err) => {
           console.warn('PeerJS host info:', err.type || err);
+          if (err.type === 'unavailable-id') {
+            console.warn('El código estaba ocupado, regenerando código...');
+            this.codigoSala = this.generarCodigo();
+            this.iniciarCanalesHost(this.codigoSala);
+            const lobbyCodigo = document.getElementById('lobby-codigo-sala');
+            if (lobbyCodigo) lobbyCodigo.textContent = this.codigoSala;
+          }
         });
       } catch (e) {
         console.warn('PeerJS host error:', e);
@@ -915,6 +967,9 @@ class RedDojo {
         targetGuestId: gId
       };
 
+      if (connDirecta) {
+        try { connDirecta.send(respuesta); } catch (e) {}
+      }
       this.enviarAClientes(respuesta);
       this.disparar('lobbyUpdate', respuesta);
     } else if (msg.tipo === 'PLAYER_MOVED') {
@@ -972,14 +1027,18 @@ class RedDojo {
     };
 
     let conectado = false;
+    let intentosP2P = 0;
+    const maxIntentos = 10;
+    let intervaloReintento = null;
 
     if (this.timerUnirse) clearTimeout(this.timerUnirse);
     this.timerUnirse = setTimeout(() => {
       if (!conectado) {
+        if (intervaloReintento) clearInterval(intervaloReintento);
         this.disparar('roomError', `No se encontró la sala "${cod}". Verifica que el código sea correcto y el anfitrión esté en el lobby.`);
         this.cerrarCanales();
       }
-    }, 5000);
+    }, 15000);
 
     // 1. BroadcastChannel (para pestañas en el mismo navegador)
     if (typeof BroadcastChannel !== 'undefined') {
@@ -989,6 +1048,7 @@ class RedDojo {
           const msg = e.data;
           if (msg && msg.tipo) {
             conectado = true;
+            if (intervaloReintento) clearInterval(intervaloReintento);
             if (this.timerUnirse) clearTimeout(this.timerUnirse);
             this.procesarMensajeGuest(msg);
           }
@@ -1005,20 +1065,47 @@ class RedDojo {
     // 2. PeerJS WebRTC (para distintos navegadores / dispositivos)
     if (typeof Peer !== 'undefined') {
       try {
-        this.peer = new Peer();
+        this.peer = new Peer(PEER_CONFIG);
+
         this.peer.on('open', () => {
           const targetId = 'dojoninja-' + cod.toLowerCase();
-          const conn = this.peer.connect(targetId);
-          this.peerHostConn = conn;
-          conn.on('open', () => {
-            conn.send(req);
-          });
-          conn.on('data', (data) => {
-            conectado = true;
-            if (this.timerUnirse) clearTimeout(this.timerUnirse);
-            this.procesarMensajeGuest(data);
-          });
+
+          const intentarConexionHost = () => {
+            if (conectado || !this.peer || this.peer.destroyed) return;
+            intentosP2P++;
+            const conn = this.peer.connect(targetId, { reliable: true });
+            this.peerHostConn = conn;
+
+            conn.on('open', () => {
+              conn.send(req);
+              // Reenviar por si acaso
+              setTimeout(() => { if (!conectado && conn.open) conn.send(req); }, 350);
+              setTimeout(() => { if (!conectado && conn.open) conn.send(req); }, 1000);
+            });
+
+            conn.on('data', (data) => {
+              conectado = true;
+              if (intervaloReintento) clearInterval(intervaloReintento);
+              if (this.timerUnirse) clearTimeout(this.timerUnirse);
+              this.procesarMensajeGuest(data);
+            });
+
+            conn.on('error', (err) => {
+              console.warn(`[PeerJS Guest] Intento ${intentosP2P} a host falló:`, err);
+            });
+          };
+
+          intentarConexionHost();
+
+          intervaloReintento = setInterval(() => {
+            if (conectado || intentosP2P >= maxIntentos || !this.peer || this.peer.destroyed) {
+              clearInterval(intervaloReintento);
+              return;
+            }
+            intentarConexionHost();
+          }, 1500);
         });
+
         this.peer.on('error', (err) => {
           console.warn('PeerJS guest info:', err.type || err);
         });
@@ -1212,8 +1299,14 @@ class RedDojo {
     }
     this.peerConexiones.forEach((conn, id) => {
       if (remitenteId && id === remitenteId) return;
-      if (conn && conn.open) {
-        try { conn.send(msg); } catch (e) {}
+      if (conn) {
+        if (conn.open) {
+          try { conn.send(msg); } catch (e) {}
+        } else {
+          conn.on('open', () => {
+            try { conn.send(msg); } catch (e) {}
+          });
+        }
       }
     });
   }
@@ -1279,6 +1372,18 @@ function renderizarLobby(datos) {
   codigoSalaActual = datos.codigoSala || 'GLOBAL';
   const lobbyCodigo = document.getElementById('lobby-codigo-sala');
   if (lobbyCodigo) lobbyCodigo.textContent = codigoSalaActual;
+  const lobbyEstadoRed = document.getElementById('lobby-estado-red');
+  if (lobbyEstadoRed) {
+    if (datos.esAnfitrion) {
+      lobbyEstadoRed.textContent = (red.peer && red.peer.open)
+        ? 'En línea — Código listo para compartir'
+        : 'Conectando a red P2P... Espera un momento';
+      lobbyEstadoRed.style.color = (red.peer && red.peer.open) ? '#a5d6a7' : '#ffb74d';
+    } else {
+      lobbyEstadoRed.textContent = 'Conectado a la sala del anfitrión';
+      lobbyEstadoRed.style.color = '#a5d6a7';
+    }
+  }
 
   const jugadoresObj = datos.jugadores || {};
   const listaIds = Object.keys(jugadoresObj);
@@ -1720,6 +1825,10 @@ function ejecutarEspadazo() {
 }
 
 window.addEventListener('keydown', (e) => {
+  const tag = e.target && e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+    return;
+  }
   if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') teclas.izquierda = true;
   if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') teclas.derecha = true;
   if (e.key === ' ' || e.code === 'Space' || e.key === 'f' || e.key === 'F' || e.key === 'e' || e.key === 'E') {
@@ -1744,6 +1853,10 @@ window.addEventListener('click', () => {
 }, { passive: true });
 
 window.addEventListener('keyup', (e) => {
+  const tag = e.target && e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+    return;
+  }
   if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') teclas.izquierda = false;
   if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') teclas.derecha = false;
 });
@@ -2404,7 +2517,7 @@ vincularClick('btn-confirmar-unirse', () => {
     return;
   }
   if (errEl) {
-    errEl.textContent = 'Buscando sala ' + codigo + '...';
+    errEl.textContent = 'Buscando sala ' + codigo + ' y conectando por P2P...';
     errEl.style.color = '#ffb74d';
     errEl.style.display = 'block';
   }
