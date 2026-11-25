@@ -707,16 +707,406 @@ function actualizarIA(delta) {
 }
 
 // =============================================================
-// 8. MULTIJUGADOR EN TIEMPO REAL (SOCKET.IO)
-// Cumple: "Multijugador en tiempo real"
+// 8. MULTIJUGADOR EN TIEMPO REAL (SOCKET.IO + P2P WEBRTC / BROADCASTCHANNEL)
+// Funciona tanto localmente (Node.js) como en Vercel (P2P entre navegadores)
 // =============================================================
+class RedDojo {
+  constructor() {
+    this.socket = null;
+    this.socketConectado = false;
+    this.peer = null;
+    this.peerConexiones = new Map();
+    this.peerHostConn = null;
+    this.broadcastChannel = null;
+    this.isHost = false;
+    this.codigoSala = 'GLOBAL';
+    this.miId = 'ninja_' + Math.random().toString(36).substring(2, 8);
+    this.miNombre = 'Ninja';
+    this.jugadores = {};
+    this.anfitrionId = null;
+    this.listeners = {};
+    this.timerUnirse = null;
+
+    if (typeof io === 'function') {
+      try {
+        this.socket = io({ timeout: 2500, reconnectionAttempts: 2 });
+        this.socket.on('connect', () => {
+          this.socketConectado = true;
+          this.miId = this.socket.id;
+          console.log('[RedDojo] Conectado por Socket.io:', this.miId);
+        });
+        this.socket.on('disconnect', () => {
+          this.socketConectado = false;
+        });
+        this.socket.on('connect_error', () => {
+          this.socketConectado = false;
+        });
+
+        const eventos = [
+          'joinedLobby', 'lobbyUpdate', 'roomError', 'matchStarted',
+          'jugadoresActuales', 'nuevoJugador', 'jugadorMovido', 'jugadorSalio'
+        ];
+        eventos.forEach((evt) => {
+          this.socket.on(evt, (datos) => this.disparar(evt, datos));
+        });
+      } catch (e) {
+        console.warn('[RedDojo] Socket.io no disponible:', e);
+      }
+    }
+  }
+
+  on(evento, cb) {
+    if (!this.listeners[evento]) this.listeners[evento] = [];
+    this.listeners[evento].push(cb);
+  }
+
+  disparar(evento, datos) {
+    if (this.listeners[evento]) {
+      this.listeners[evento].forEach((cb) => {
+        try { cb(datos); } catch (e) { console.error(e); }
+      });
+    }
+  }
+
+  generarCodigo() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let cod = '';
+    for (let i = 0; i < 4; i++) {
+      cod += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return cod;
+  }
+
+  crearSala(nombre) {
+    this.miNombre = nombre || 'Ninja';
+    if (this.socket && this.socketConectado) {
+      this.socket.emit('createRoom', { userName: this.miNombre });
+      return;
+    }
+
+    // Modo P2P (Vercel / navegadores)
+    this.cerrarCanales();
+    this.isHost = true;
+    this.codigoSala = this.generarCodigo();
+    this.anfitrionId = this.miId;
+    this.jugadores = {
+      [this.miId]: {
+        id: this.miId,
+        nombre: this.miNombre,
+        x: 0, y: 0, z: 0,
+        esAnfitrion: true
+      }
+    };
+
+    this.iniciarCanalesHost(this.codigoSala);
+
+    this.disparar('joinedLobby', {
+      codigoSala: this.codigoSala,
+      esAnfitrion: true,
+      anfitrionId: this.anfitrionId,
+      jugadorLocal: this.jugadores[this.miId],
+      todosJugadores: this.jugadores,
+      jugadores: this.jugadores
+    });
+  }
+
+  iniciarCanalesHost(codigo) {
+    const canalNombre = 'dojo3d_room_' + codigo.toLowerCase();
+
+    // 1. BroadcastChannel (mismo navegador / distintas pestañas en Vercel)
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        this.broadcastChannel = new BroadcastChannel(canalNombre);
+        this.broadcastChannel.onmessage = (e) => this.procesarMensajeHost(e.data);
+      } catch (e) {
+        console.warn('BroadcastChannel error:', e);
+      }
+    }
+
+    // 2. PeerJS WebRTC (distintos dispositivos / redes)
+    if (typeof Peer !== 'undefined') {
+      try {
+        const peerId = 'dojoninja-' + codigo.toLowerCase();
+        this.peer = new Peer(peerId);
+        this.peer.on('connection', (conn) => {
+          this.peerConexiones.set(conn.peer, conn);
+          conn.on('data', (data) => this.procesarMensajeHost(data, conn));
+          conn.on('close', () => {
+            this.peerConexiones.delete(conn.peer);
+          });
+        });
+        this.peer.on('error', (err) => {
+          console.warn('PeerJS host info:', err.type || err);
+        });
+      } catch (e) {
+        console.warn('PeerJS host error:', e);
+      }
+    }
+  }
+
+  procesarMensajeHost(msg, connDirecta = null) {
+    if (!msg || !this.isHost) return;
+
+    if (msg.tipo === 'JOIN_REQUEST') {
+      const gId = msg.guestId;
+      const gNombre = msg.nombre || 'Ninja Aliado';
+      this.jugadores[gId] = {
+        id: gId,
+        nombre: gNombre,
+        x: 0, y: 0, z: 0,
+        esAnfitrion: false
+      };
+
+      const respuesta = {
+        tipo: 'LOBBY_UPDATE',
+        codigoSala: this.codigoSala,
+        anfitrionId: this.anfitrionId,
+        jugadores: this.jugadores,
+        targetGuestId: gId
+      };
+
+      this.enviarAClientes(respuesta);
+      this.disparar('lobbyUpdate', respuesta);
+    } else if (msg.tipo === 'PLAYER_MOVED') {
+      if (this.jugadores[msg.id]) {
+        this.jugadores[msg.id].x = msg.x;
+        this.jugadores[msg.id].y = msg.y;
+        this.jugadores[msg.id].z = msg.z;
+      }
+      this.disparar('jugadorMovido', { id: msg.id, x: msg.x, y: msg.y, z: msg.z });
+      this.enviarAClientes(msg, msg.id);
+    } else if (msg.tipo === 'PLAYER_LEFT') {
+      delete this.jugadores[msg.id];
+      this.disparar('jugadorSalio', msg.id);
+      const update = {
+        tipo: 'LOBBY_UPDATE',
+        codigoSala: this.codigoSala,
+        anfitrionId: this.anfitrionId,
+        jugadores: this.jugadores
+      };
+      this.enviarAClientes(update);
+      this.disparar('lobbyUpdate', update);
+    }
+  }
+
+  unirseASala(codigo, nombre) {
+    this.miNombre = nombre || 'Ninja';
+    const cod = (codigo || '').trim().toUpperCase();
+    if (!cod) {
+      this.disparar('roomError', 'Por favor escribe el código de la sala.');
+      return;
+    }
+
+    if (this.socket && this.socketConectado) {
+      this.socket.emit('joinRoom', { userName: this.miNombre, roomCode: cod });
+      return;
+    }
+
+    // Modo P2P en Vercel
+    this.cerrarCanales();
+    this.isHost = false;
+    this.codigoSala = cod;
+
+    const canalNombre = 'dojo3d_room_' + cod.toLowerCase();
+    const req = {
+      tipo: 'JOIN_REQUEST',
+      guestId: this.miId,
+      nombre: this.miNombre
+    };
+
+    let conectado = false;
+
+    if (this.timerUnirse) clearTimeout(this.timerUnirse);
+    this.timerUnirse = setTimeout(() => {
+      if (!conectado) {
+        this.disparar('roomError', `No se encontró la sala "${cod}". Verifica que el código sea correcto y el anfitrión esté en el lobby.`);
+        this.cerrarCanales();
+      }
+    }, 4500);
+
+    // 1. BroadcastChannel (para pestañas en el mismo navegador)
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        this.broadcastChannel = new BroadcastChannel(canalNombre);
+        this.broadcastChannel.onmessage = (e) => {
+          const msg = e.data;
+          if (msg && (msg.tipo === 'LOBBY_UPDATE' || msg.tipo === 'MATCH_STARTED' || msg.tipo === 'PLAYER_MOVED' || msg.tipo === 'PLAYER_LEFT')) {
+            conectado = true;
+            if (this.timerUnirse) clearTimeout(this.timerUnirse);
+            this.procesarMensajeGuest(msg);
+          }
+        };
+        this.broadcastChannel.postMessage(req);
+        // Reintentos rápidos por si el host tardó unos milisegundos en inicializar
+        setTimeout(() => { if (!conectado && this.broadcastChannel) this.broadcastChannel.postMessage(req); }, 300);
+        setTimeout(() => { if (!conectado && this.broadcastChannel) this.broadcastChannel.postMessage(req); }, 800);
+      } catch (e) {
+        console.warn('BroadcastChannel error:', e);
+      }
+    }
+
+    // 2. PeerJS WebRTC (para distintos navegadores / dispositivos)
+    if (typeof Peer !== 'undefined') {
+      try {
+        this.peer = new Peer();
+        this.peer.on('open', () => {
+          const targetId = 'dojoninja-' + cod.toLowerCase();
+          const conn = this.peer.connect(targetId);
+          this.peerHostConn = conn;
+          conn.on('open', () => {
+            conn.send(req);
+          });
+          conn.on('data', (data) => {
+            conectado = true;
+            if (this.timerUnirse) clearTimeout(this.timerUnirse);
+            this.procesarMensajeGuest(data);
+          });
+        });
+        this.peer.on('error', (err) => {
+          console.warn('PeerJS guest info:', err.type || err);
+        });
+      } catch (e) {
+        console.warn('PeerJS guest error:', e);
+      }
+    }
+  }
+
+  procesarMensajeGuest(msg) {
+    if (!msg) return;
+
+    if (msg.tipo === 'LOBBY_UPDATE') {
+      this.anfitrionId = msg.anfitrionId;
+      this.jugadores = msg.jugadores || {};
+      this.disparar('joinedLobby', {
+        codigoSala: this.codigoSala,
+        esAnfitrion: false,
+        anfitrionId: this.anfitrionId,
+        jugadorLocal: this.jugadores[this.miId] || { id: this.miId, nombre: this.miNombre },
+        todosJugadores: this.jugadores,
+        jugadores: this.jugadores
+      });
+      this.disparar('lobbyUpdate', msg);
+    } else if (msg.tipo === 'MATCH_STARTED') {
+      this.jugadores = msg.todosJugadores || this.jugadores;
+      this.disparar('matchStarted', msg);
+      this.disparar('jugadoresActuales', this.jugadores);
+    } else if (msg.tipo === 'PLAYER_MOVED') {
+      if (msg.id !== this.miId) {
+        this.disparar('jugadorMovido', { id: msg.id, x: msg.x, y: msg.y, z: msg.z });
+      }
+    } else if (msg.tipo === 'PLAYER_LEFT') {
+      if (msg.id !== this.miId) {
+        this.disparar('jugadorSalio', msg.id);
+      }
+    }
+  }
+
+  iniciarPartidaLobby() {
+    if (this.socket && this.socketConectado) {
+      this.socket.emit('startLobbyMatch');
+      return;
+    }
+
+    if (this.isHost) {
+      const msg = {
+        tipo: 'MATCH_STARTED',
+        codigoSala: this.codigoSala,
+        todosJugadores: this.jugadores
+      };
+      this.enviarAClientes(msg);
+      this.disparar('matchStarted', msg);
+      this.disparar('jugadoresActuales', this.jugadores);
+    }
+  }
+
+  entrarJuego(datos) {
+    if (this.socket && this.socketConectado) {
+      this.socket.emit('entrarJuego', datos);
+    }
+  }
+
+  enviarMovimiento(pos) {
+    if (this.socket && this.socketConectado) {
+      this.socket.emit('mover', pos);
+      return;
+    }
+
+    const msg = {
+      tipo: 'PLAYER_MOVED',
+      id: this.miId,
+      x: pos.x,
+      y: pos.y,
+      z: pos.z
+    };
+
+    if (this.isHost) {
+      this.enviarAClientes(msg);
+    } else {
+      if (this.broadcastChannel) this.broadcastChannel.postMessage(msg);
+      if (this.peerHostConn && this.peerHostConn.open) {
+        this.peerHostConn.send(msg);
+      }
+    }
+  }
+
+  enviarAClientes(msg, remitenteId = null) {
+    if (this.broadcastChannel) {
+      try { this.broadcastChannel.postMessage(msg); } catch (e) {}
+    }
+    this.peerConexiones.forEach((conn, id) => {
+      if (remitenteId && id === remitenteId) return;
+      if (conn && conn.open) {
+        try { conn.send(msg); } catch (e) {}
+      }
+    });
+  }
+
+  salir() {
+    if (this.timerUnirse) clearTimeout(this.timerUnirse);
+    if (this.socket && this.socketConectado) {
+      this.socket.emit('leaveGame');
+    }
+    const msg = { tipo: 'PLAYER_LEFT', id: this.miId };
+    if (this.isHost) {
+      this.enviarAClientes(msg);
+    } else {
+      if (this.broadcastChannel) try { this.broadcastChannel.postMessage(msg); } catch (e) {}
+      if (this.peerHostConn && this.peerHostConn.open) try { this.peerHostConn.send(msg); } catch (e) {}
+    }
+    this.cerrarCanales();
+  }
+
+  cerrarCanales() {
+    if (this.broadcastChannel) {
+      try { this.broadcastChannel.close(); } catch (e) {}
+      this.broadcastChannel = null;
+    }
+    this.peerConexiones.forEach((conn) => {
+      try { conn.close(); } catch (e) {}
+    });
+    this.peerConexiones.clear();
+    if (this.peerHostConn) {
+      try { this.peerHostConn.close(); } catch (e) {}
+      this.peerHostConn = null;
+    }
+    if (this.peer) {
+      try { this.peer.destroy(); } catch (e) {}
+      this.peer = null;
+    }
+    this.isHost = false;
+  }
+}
+
 let otrosJugadores = {};
 let codigoSalaActual = 'GLOBAL';
-const socket = io();
+const red = new RedDojo();
 
 function renderizarLobby(datos) {
   const pantallaLobby = document.getElementById('pantalla-lobby');
   if (!pantallaLobby) return;
+
+  const errEl = document.getElementById('error-unirse-sala');
+  if (errEl) errEl.style.display = 'none';
 
   const menuInicio = document.getElementById('menu-inicio');
   if (menuInicio) menuInicio.style.display = 'none';
@@ -747,7 +1137,7 @@ function renderizarLobby(datos) {
     listaIds.forEach((id) => {
       const j = jugadoresObj[id];
       const esAnf = id === datos.anfitrionId;
-      const esYo = socket && id === socket.id;
+      const esYo = id === red.miId;
 
       const div = document.createElement('div');
       div.style.cssText = 'background: #222222; border: 1px solid #444444; padding: 6px 10px; display: flex; justify-content: space-between; align-items: center; font-size: 13px;';
@@ -762,7 +1152,7 @@ function renderizarLobby(datos) {
     });
   }
 
-  const soyAnfitrion = socket ? (datos.anfitrionId === socket.id || !datos.anfitrionId) : true;
+  const soyAnfitrion = (datos.anfitrionId === red.miId || red.isHost);
   const btnIniciarLobby = document.getElementById('btn-iniciar-partida-lobby');
   if (btnIniciarLobby) btnIniciarLobby.style.display = soyAnfitrion ? 'block' : 'none';
 
@@ -770,34 +1160,35 @@ function renderizarLobby(datos) {
   if (lobbyAvisoEspera) lobbyAvisoEspera.style.display = soyAnfitrion ? 'none' : 'block';
 }
 
-socket.on('joinedLobby', (datos) => {
+red.on('joinedLobby', (datos) => {
   renderizarLobby(datos);
 });
 
-socket.on('lobbyUpdate', (datos) => {
+red.on('lobbyUpdate', (datos) => {
   renderizarLobby(datos);
 });
 
-socket.on('roomError', (msg) => {
+red.on('roomError', (msg) => {
   const errEl = document.getElementById('error-unirse-sala');
   if (errEl) {
     errEl.textContent = msg;
+    errEl.style.color = '#ff5252';
     errEl.style.display = 'block';
   } else {
     alert(msg);
   }
 });
 
-socket.on('matchStarted', (datos) => {
+red.on('matchStarted', (datos) => {
   const pantallaLobby = document.getElementById('pantalla-lobby');
   if (pantallaLobby) pantallaLobby.style.display = 'none';
   if (datos && datos.codigoSala) codigoSalaActual = datos.codigoSala;
   empezarPartida();
 });
 
-socket.on('jugadoresActuales', (lista) => {
+red.on('jugadoresActuales', (lista) => {
   Object.keys(lista).forEach(id => {
-    if (id !== socket.id && !otrosJugadores[id]) {
+    if (id !== red.miId && !otrosJugadores[id]) {
       otrosJugadores[id] = new JugadorNinja({
         id,
         nombre: lista[id].nombre || 'Ninja Aliado',
@@ -810,8 +1201,8 @@ socket.on('jugadoresActuales', (lista) => {
   });
 });
 
-socket.on('nuevoJugador', (datos) => {
-  if (datos.id !== socket.id && !otrosJugadores[datos.id]) {
+red.on('nuevoJugador', (datos) => {
+  if (datos.id !== red.miId && !otrosJugadores[datos.id]) {
     otrosJugadores[datos.id] = new JugadorNinja({
       id: datos.id,
       nombre: datos.nombre || 'Ninja Aliado',
@@ -823,13 +1214,13 @@ socket.on('nuevoJugador', (datos) => {
   }
 });
 
-socket.on('jugadorMovido', (datos) => {
+red.on('jugadorMovido', (datos) => {
   if (otrosJugadores[datos.id]) {
     otrosJugadores[datos.id].targetPos.x = datos.x;
   }
 });
 
-socket.on('jugadorSalio', (id) => {
+red.on('jugadorSalio', (id) => {
   if (otrosJugadores[id]) {
     otrosJugadores[id].destruir();
     delete otrosJugadores[id];
@@ -1154,7 +1545,7 @@ function animate() {
     luzFocal.target = jugador.root;
 
     // Multijugador
-    socket.emit('mover', { x: jugador.root.position.x, y: 0, z: 0 });
+    red.enviarMovimiento({ x: jugador.root.position.x, y: 0, z: 0 });
 
     // Inteligencia Artificial enemiga
     actualizarIA(delta);
@@ -1228,7 +1619,22 @@ function empezarPartida() {
   audio.iniciarBGM();
 
   const nombre = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja';
-  socket.emit('entrarJuego', { nombre, codigoSala: codigoSalaActual });
+  red.entrarJuego({ nombre, codigoSala: codigoSalaActual });
+
+  if (red.jugadores) {
+    Object.keys(red.jugadores).forEach(id => {
+      if (id !== red.miId && !otrosJugadores[id]) {
+        otrosJugadores[id] = new JugadorNinja({
+          id,
+          nombre: red.jugadores[id].nombre || 'Ninja Aliado',
+          x: red.jugadores[id].x || 0,
+          y: 0,
+          z: red.jugadores[id].z || 0,
+          color: { hex: 0xf39c12, ropa: 0x8c2a2a, cinta: 0xffb74d }
+        }, false);
+      }
+    });
+  }
 
   if (intervaloTiempo) clearInterval(intervaloTiempo);
   intervaloTiempo = setInterval(() => {
@@ -1289,7 +1695,7 @@ function volverAlMenu() {
   obstaculos.forEach(o => scene.remove(o));
   obstaculos = [];
 
-  if (socket) socket.emit('leaveGame');
+  red.salir();
   Object.keys(otrosJugadores).forEach(id => {
     if (otrosJugadores[id]) otrosJugadores[id].destruir();
   });
@@ -1336,18 +1742,7 @@ vincularClick('btn-gameover-salir', volverAlMenu);
 // BOTONES DE SALA Y LOBBY
 vincularClick('btn-crear-sala', () => {
   const nombre = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja Shinobi';
-  if (socket && socket.connected) {
-    socket.emit('createRoom', { userName: nombre });
-  } else {
-    const codigoLocal = 'LOCAL';
-    renderizarLobby({
-      codigoSala: codigoLocal,
-      anfitrionId: socket ? socket.id : 'local_host',
-      jugadores: {
-        [socket ? socket.id : 'local_host']: { nombre: nombre }
-      }
-    });
-  }
+  red.crearSala(nombre);
 });
 
 vincularClick('btn-unirse-sala', () => {
@@ -1360,6 +1755,7 @@ vincularClick('btn-unirse-sala', () => {
 });
 
 vincularClick('btn-cancelar-unirse', () => {
+  if (red.timerUnirse) clearTimeout(red.timerUnirse);
   const modal = document.getElementById('modal-unirse-sala');
   if (modal) modal.style.display = 'none';
 });
@@ -1371,30 +1767,28 @@ vincularClick('btn-confirmar-unirse', () => {
   if (!codigo) {
     if (errEl) {
       errEl.textContent = 'Por favor escribe el código de la sala.';
+      errEl.style.color = '#ff5252';
       errEl.style.display = 'block';
     }
     return;
   }
-  const nombre = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja Shinobi';
-  if (socket && socket.connected) {
-    socket.emit('joinRoom', { userName: nombre, roomCode: codigo });
-  } else {
-    if (errEl) {
-      errEl.textContent = 'Servidor multijugador no conectado. Inicia con "npm start" para jugar en red.';
-      errEl.style.display = 'block';
-    }
+  if (errEl) {
+    errEl.textContent = 'Buscando sala ' + codigo + '...';
+    errEl.style.color = '#ffb74d';
+    errEl.style.display = 'block';
   }
+  const nombre = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja Shinobi';
+  red.unirseASala(codigo, nombre);
 });
 
 vincularClick('btn-iniciar-partida-lobby', () => {
-  if (socket && socket.connected) {
-    socket.emit('startLobbyMatch');
-  } else {
-    empezarPartida();
-  }
+  red.iniciarPartidaLobby();
 });
 
-vincularClick('btn-salir-lobby', volverAlMenu);
+vincularClick('btn-salir-lobby', () => {
+  red.salir();
+  volverAlMenu();
+});
 
 const btnSonido = document.getElementById('btn-sonido-toggle');
 if (btnSonido) {
