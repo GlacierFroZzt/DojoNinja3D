@@ -934,9 +934,9 @@ function actualizarHUD() {
 }
 
 function empezarPartida() {
-  modoActual = document.getElementById('modo-juego').value;
-  dificultadActual = document.getElementById('dificultad-juego').value;
-  const esc = document.getElementById('escenario-juego').value;
+  modoActual = (document.getElementById('sel-modo') || document.getElementById('modo-juego')).value;
+  dificultadActual = (document.getElementById('sel-dificultad') || document.getElementById('dificultad-juego')).value;
+  const esc = (document.getElementById('sel-escenario') || document.getElementById('escenario-juego')).value;
   aplicarEscenario(esc);
 
   velocidadObstaculos = dificultadActual === 'dificil' ? 24 : 17;
@@ -962,7 +962,7 @@ function empezarPartida() {
   audio.iniciarBGM();
 
   // Notificar al servidor multijugador
-  const nombre = document.getElementById('nombre-jugador').value || 'Ninja';
+  const nombre = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja';
   socket.emit('entrarJuego', { nombre });
 
   if (intervaloTiempo) clearInterval(intervaloTiempo);
@@ -988,7 +988,7 @@ function terminarJuego(motivo) {
   document.getElementById('pantalla-gameover').style.display = 'flex';
 
   // Guardar en el servicio web REST
-  const nombre = document.getElementById('nombre-jugador').value || 'Ninja Anónimo';
+  const nombre = ((document.getElementById('input-nombre') || document.getElementById('nombre-jugador')).value) || 'Ninja Anónimo';
   fetch('/api/puntuaciones', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1032,14 +1032,21 @@ function volverAlMenu() {
 }
 
 // =============================================================
-// 15. LISTENERS DE BOTONES Y MENÚS
+// 15. LISTENERS DE BOTONES Y MENÚS SEGUROS (CON CHECK DE NULL)
 // =============================================================
-document.getElementById('btn-jugar').onclick = empezarPartida;
-document.getElementById('btn-reintentar').onclick = empezarPartida;
-document.getElementById('btn-pausa-hud').onclick = pausarJuego;
-document.getElementById('btn-reanudar').onclick = reanudarJuego;
-document.getElementById('btn-salir-menu').onclick = volverAlMenu;
-document.getElementById('btn-gameover-salir').onclick = volverAlMenu;
+function vincularClick(id, fn) {
+  const el = document.getElementById(id);
+  if (el) el.onclick = fn;
+}
+
+vincularClick('btn-jugar', empezarPartida);
+vincularClick('btn-comenzar', empezarPartida);
+vincularClick('btn-reintentar', empezarPartida);
+vincularClick('btn-pausa-hud', pausarJuego);
+vincularClick('btn-reanudar', reanudarJuego);
+vincularClick('btn-salir-menu', volverAlMenu);
+vincularClick('btn-pausa-salir', volverAlMenu);
+vincularClick('btn-gameover-salir', volverAlMenu);
 
 // Toggle de Música en HUD
 const btnSonido = document.getElementById('btn-sonido-toggle');
@@ -1051,32 +1058,57 @@ if (btnSonido) {
 }
 
 // Configuración de Iluminación
-document.getElementById('btn-configuracion').onclick = () => {
-  document.getElementById('modal-opciones').style.display = 'flex';
-};
-document.getElementById('btn-cerrar-opciones').onclick = () => {
-  document.getElementById('modal-opciones').style.display = 'none';
-};
+function abrirConfig() {
+  const m = document.getElementById('modal-opciones');
+  if (m) m.style.display = 'flex';
+}
+vincularClick('btn-configuracion', abrirConfig);
+vincularClick('btn-opciones', abrirConfig);
+vincularClick('btn-pausa-opciones', abrirConfig);
 
-document.getElementById('cfg-luz-focal').onchange = (e) => {
-  luzFocal.color.set(e.target.value);
-};
-document.getElementById('cfg-luz-ambiental').oninput = (e) => {
-  luzAmbiental.intensity = parseFloat(e.target.value);
-};
-document.getElementById('cfg-sombras').onchange = (e) => {
-  renderer.shadowMap.enabled = e.target.checked;
-};
+vincularClick('btn-cerrar-opciones', () => {
+  const m = document.getElementById('modal-opciones');
+  if (m) m.style.display = 'none';
+});
+
+// Selects de iluminación
+const cfgFocal = document.getElementById('cfg-luz-focal') || document.getElementById('sel-color-luz');
+if (cfgFocal) {
+  cfgFocal.onchange = (e) => {
+    const val = e.target.value;
+    luzFocal.color.set(val.startsWith('0x') ? parseInt(val) : val);
+  };
+}
+
+const cfgAmb = document.getElementById('cfg-luz-ambiental') || document.getElementById('sel-luz-ambiente');
+if (cfgAmb) {
+  cfgAmb.oninput = (e) => {
+    luzAmbiental.intensity = parseFloat(e.target.value);
+  };
+  cfgAmb.onchange = (e) => {
+    luzAmbiental.intensity = parseFloat(e.target.value);
+  };
+}
+
+const cfgSombras = document.getElementById('cfg-sombras') || document.getElementById('sel-sombras');
+if (cfgSombras) {
+  cfgSombras.onchange = (e) => {
+    const v = e.target.value;
+    renderer.shadowMap.enabled = (v === 'none' ? false : (e.target.checked !== undefined ? e.target.checked : true));
+  };
+}
 
 // Puntuaciones (Servicio Web REST)
-document.getElementById('btn-puntuaciones').onclick = () => {
-  document.getElementById('modal-puntuaciones').style.display = 'flex';
+vincularClick('btn-puntuaciones', () => {
+  const modal = document.getElementById('modal-puntuaciones');
+  if (modal) modal.style.display = 'flex';
   const lista = document.getElementById('lista-puntuaciones-tabla');
-  lista.innerHTML = 'Consultando servicio web...';
+  if (lista) lista.innerHTML = 'Consultando servicio web...';
 
   fetch('/api/puntuaciones')
     .then(r => r.json())
     .then(datos => {
+      if (!lista) return;
       if (!datos || datos.length === 0) {
         lista.innerHTML = '<p>No hay puntuaciones registradas aún.</p>';
         return;
@@ -1095,13 +1127,14 @@ document.getElementById('btn-puntuaciones').onclick = () => {
       lista.innerHTML = html;
     })
     .catch(() => {
-      lista.innerHTML = 'Error al consultar el servicio web.';
+      if (lista) lista.innerHTML = 'Error al consultar el servicio web.';
     });
-};
+});
 
-document.getElementById('btn-cerrar-puntuaciones').onclick = () => {
-  document.getElementById('modal-puntuaciones').style.display = 'none';
-};
+vincularClick('btn-cerrar-puntuaciones', () => {
+  const m = document.getElementById('modal-puntuaciones');
+  if (m) m.style.display = 'none';
+});
 
 // =============================================================
 // 16. COMPARTIR EN REDES SOCIALES (Facebook, Twitter o Instagram, WhatsApp)
@@ -1120,28 +1153,22 @@ function compartirFacebook() {
   window.open(`https://www.facebook.com/sharer/sharer.php?u=${url}`, '_blank');
 }
 function compartirInstagram() {
-  alert(`Copia tu récord para tu historia de Instagram:\n"¡Hice ${puntos} puntos en Dojo Ninja 3D!"`);
+  alert(`Copia tu récord para tu historia de Instagram:
+"¡Hice ${puntos} puntos en Dojo Ninja 3D!"`);
   window.open('https://www.instagram.com/', '_blank');
 }
 
-// Botones en modal puntuaciones
-document.getElementById('btn-share-whatsapp').onclick = compartirWhatsApp;
-document.getElementById('btn-share-twitter').onclick = compartirTwitter;
-const btnShareFb = document.getElementById('btn-share-facebook');
-if (btnShareFb) btnShareFb.onclick = compartirFacebook;
-const btnShareIg = document.getElementById('btn-share-instagram');
-if (btnShareIg) btnShareIg.onclick = compartirInstagram;
+vincularClick('btn-share-whatsapp', compartirWhatsApp);
+vincularClick('btn-share-twitter', compartirTwitter);
+vincularClick('btn-share-facebook', compartirFacebook);
+vincularClick('btn-share-instagram', compartirInstagram);
 
-// Botones en modal gameover
-document.getElementById('btn-gameover-whatsapp').onclick = compartirWhatsApp;
-const btnGoTw = document.getElementById('btn-gameover-twitter');
-if (btnGoTw) btnGoTw.onclick = compartirTwitter;
-const btnGoFb = document.getElementById('btn-gameover-facebook');
-if (btnGoFb) btnGoFb.onclick = compartirFacebook;
-const btnGoIg = document.getElementById('btn-gameover-instagram');
-if (btnGoIg) btnGoIg.onclick = compartirInstagram;
+vincularClick('btn-gameover-whatsapp', compartirWhatsApp);
+vincularClick('btn-gameover-twitter', compartirTwitter);
+vincularClick('btn-gameover-facebook', compartirFacebook);
+vincularClick('btn-gameover-instagram', compartirInstagram);
 
-// Ocultar pantalla de carga inicial
+// Ocultar pantalla de carga inicial al estar todo listo
 const pCarga = document.getElementById('pantalla-carga');
 if (pCarga) pCarga.style.display = 'none';
 
