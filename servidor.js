@@ -219,6 +219,13 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('pausarJuego', (datos) => {
+    const codigoSala = socket.codigoSala;
+    if (codigoSala) {
+      socket.to(codigoSala).emit('juegoPausadoRed', datos);
+    }
+  });
+
   socket.on('leaveGame', () => {
     eliminarJugadorDeSala(socket);
   });

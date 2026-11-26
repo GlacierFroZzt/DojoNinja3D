@@ -297,6 +297,9 @@ export class RedDojo {
     } else if (msg.tipo === 'PLAYER_POWER') {
       this.disparar('poderActivado', { id: msg.id, tipo: msg.poder, duracion: msg.duracion });
       this.enviarAClientes(msg, msg.id);
+    } else if (msg.tipo === 'GAME_PAUSE') {
+      this.disparar('juegoPausadoRed', { pausado: msg.pausado, nombre: msg.nombre });
+      this.enviarAClientes(msg, msg.remitenteId);
     } else if (msg.tipo === 'PLAYER_DEATH') {
       this.disparar('muerteJugador', { id: msg.id, nombre: msg.nombre });
       this.enviarAClientes(msg, msg.id);
@@ -425,6 +428,10 @@ export class RedDojo {
       if (msg.id !== this.miId) {
         this.disparar('poderActivado', { id: msg.id, tipo: msg.poder, duracion: msg.duracion });
       }
+    } else if (msg.tipo === 'GAME_PAUSE') {
+      if (msg.remitenteId !== this.miId) {
+        this.disparar('juegoPausadoRed', { pausado: msg.pausado, nombre: msg.nombre });
+      }
     } else if (msg.tipo === 'PLAYER_DEATH') {
       if (msg.id !== this.miId) {
         this.disparar('muerteJugador', { id: msg.id, nombre: msg.nombre });
@@ -520,6 +527,21 @@ export class RedDojo {
       id: this.miId,
       poder: datos.tipo,
       duracion: datos.duracion
+    };
+    if (this.isHost) {
+      this.enviarAClientes(msg);
+    } else {
+      if (this.relay) this.relay.publicar(msg);
+      if (this.broadcastChannel) try { this.broadcastChannel.postMessage(msg); } catch (e) {}
+    }
+  }
+
+  enviarPausa(pausado) {
+    const msg = {
+      tipo: 'GAME_PAUSE',
+      remitenteId: this.miId,
+      nombre: this.miNombre || 'Ninja',
+      pausado: Boolean(pausado)
     };
     if (this.isHost) {
       this.enviarAClientes(msg);

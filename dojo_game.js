@@ -187,23 +187,43 @@ function terminarJuego(motivo) {
   }).catch(() => {});
 }
 
-function pausarJuego() {
+function pausarJuego(desdeRed = false, remitenteNombre = null) {
   if (!juegoActivo) return;
   juegoPausado = true;
   audio.detenerBGM();
-  document.getElementById('menu-pausa').style.display = 'flex';
+
+  const mPausa = document.getElementById('menu-pausa');
+  if (mPausa) {
+    mPausa.style.display = 'flex';
+    const titPausa = document.getElementById('titulo-menu-pausa');
+    if (titPausa) {
+      titPausa.textContent = (desdeRed && remitenteNombre) ? `Pausado por ${remitenteNombre}` : 'Dojo en Pausa';
+    }
+  }
+
+  if (!desdeRed) {
+    red.enviarPausa(true);
+  }
 }
 
-function reanudarJuego() {
+function reanudarJuego(desdeRed = false) {
   if (!juegoActivo) return;
   juegoPausado = false;
   audio.reanudarBGM();
-  document.getElementById('menu-pausa').style.display = 'none';
+
+  const mPausa = document.getElementById('menu-pausa');
+  if (mPausa) {
+    mPausa.style.display = 'none';
+  }
+
+  if (!desdeRed) {
+    red.enviarPausa(false);
+  }
 }
 
 function alternarPausa() {
-  if (juegoPausado) reanudarJuego();
-  else pausarJuego();
+  if (juegoPausado) reanudarJuego(false);
+  else pausarJuego(false);
 }
 
 function volverAlMenu() {
@@ -395,6 +415,14 @@ red.on('partidaTerminada', (datos) => {
   if (juegoActivo) terminarJuego(datos.motivo || '¡Fin de la partida!');
 });
 
+red.on('juegoPausadoRed', (datos) => {
+  if (datos.pausado) {
+    pausarJuego(true, datos.nombre);
+  } else {
+    reanudarJuego(true);
+  }
+});
+
 window.addEventListener('keydown', (e) => {
   const tag = e.target && e.target.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
@@ -424,8 +452,8 @@ function vincular(id, fn) {
 }
 
 vincular('btn-reintentar', empezarPartida);
-vincular('btn-pausa-hud', pausarJuego);
-vincular('btn-reanudar', reanudarJuego);
+vincular('btn-pausa-hud', () => pausarJuego(false));
+vincular('btn-reanudar', () => reanudarJuego(false));
 vincular('btn-salir-menu', volverAlMenu);
 vincular('btn-pausa-salir', volverAlMenu);
 vincular('btn-gameover-salir', volverAlMenu);
