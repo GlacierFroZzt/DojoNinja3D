@@ -19,18 +19,29 @@ if (container) {
   container.appendChild(renderer.domElement);
 }
 
-export const luzAmbiental = new THREE.AmbientLight(0xffecc4, 1.4);
+export const luzAmbiental = new THREE.AmbientLight(0xffecc4, 1.2);
 scene.add(luzAmbiental);
 
-export const luzDireccional = new THREE.DirectionalLight(0xfff0dd, 1.6);
+export const luzDireccional = new THREE.DirectionalLight(0xfff0dd, 1.4);
 luzDireccional.position.set(6, 18, 12);
+luzDireccional.castShadow = true;
+luzDireccional.shadow.mapSize.width = 1024;
+luzDireccional.shadow.mapSize.height = 1024;
+luzDireccional.shadow.camera.near = 0.5;
+luzDireccional.shadow.camera.far = 60;
+luzDireccional.shadow.camera.left = -12;
+luzDireccional.shadow.camera.right = 12;
+luzDireccional.shadow.camera.top = 25;
+luzDireccional.shadow.camera.bottom = -25;
 scene.add(luzDireccional);
 
-export const luzFocal = new THREE.SpotLight(0xffffff, 3.5, 45, Math.PI / 4, 0.4, 1.2);
-luzFocal.position.set(0, 8, 4);
+export const luzFocal = new THREE.SpotLight(0x00e5ff, 14.0, 40, Math.PI / 4, 0.35, 1.0);
+luzFocal.position.set(0, 8, 3);
 luzFocal.castShadow = true;
 luzFocal.shadow.mapSize.width = 1024;
 luzFocal.shadow.mapSize.height = 1024;
+luzFocal.target.position.set(0, 0, 0);
+scene.add(luzFocal.target);
 scene.add(luzFocal);
 
 const textureLoader = new THREE.TextureLoader();
@@ -233,10 +244,6 @@ export function aplicarEscenario(esc) {
     colMat.emissive = new THREE.Color(0x004488);
 
     luzAmbiental.color.setHex(0x7090ff);
-    luzAmbiental.intensity = 1.4;
-    luzDireccional.color.setHex(0x88c0ff);
-    luzDireccional.intensity = 1.6;
-    luzFocal.color.setHex(0x00e5ff);
   } else if (clave === 'volcan') {
     scene.background = new THREE.Color(0x280804);
     scene.fog.color.setHex(0x300a05);
@@ -253,10 +260,6 @@ export function aplicarEscenario(esc) {
     colMat.emissive = new THREE.Color(0x661100);
 
     luzAmbiental.color.setHex(0xff6633);
-    luzAmbiental.intensity = 1.6;
-    luzDireccional.color.setHex(0xff8844);
-    luzDireccional.intensity = 1.8;
-    luzFocal.color.setHex(0xff9100);
   } else {
     scene.background = new THREE.Color(0x161a24);
     scene.fog.color.setHex(0x161c28);
@@ -273,35 +276,68 @@ export function aplicarEscenario(esc) {
     colMat.emissive = new THREE.Color(0x000000);
 
     luzAmbiental.color.setHex(0xffecc4);
-    luzAmbiental.intensity = 1.4;
-    luzDireccional.color.setHex(0xfff0dd);
-    luzDireccional.intensity = 1.6;
-    luzFocal.color.setHex(0xffffff);
   }
+
+  actualizarAjustesLuces();
+}
+
+export function actualizarAjustesLuces() {
+  const selColor = document.getElementById('sel-color-luz') || document.getElementById('cfg-luz-focal');
+  const selAmb = document.getElementById('sel-luz-ambiente') || document.getElementById('cfg-luz-ambiental');
+  const selSombras = document.getElementById('sel-sombras') || document.getElementById('cfg-sombras');
+
+  // 1. Color Iluminación Focal (Linterna / Spotlight)
+  if (selColor && selColor.value) {
+    const val = selColor.value;
+    const hex = val.startsWith('0x') ? parseInt(val) : parseInt(val, 16);
+    if (!isNaN(hex)) {
+      luzFocal.color.setHex(hex);
+      const colBaseEsc = (escenarioActual === 'noche' || escenarioActual === 'ciudad') ? new THREE.Color(0x88c0ff) :
+                         ((escenarioActual === 'lava' || escenarioActual === 'volcan') ? new THREE.Color(0xff8844) : new THREE.Color(0xfff0dd));
+      luzDireccional.color.copy(colBaseEsc).lerp(new THREE.Color(hex), 0.5);
+    }
+  }
+
+  // 2. Intensidad Luz Ambiental (Normal, Brillante, Penumbra)
+  const valAmb = selAmb ? parseFloat(selAmb.value) : 1.2;
+  const ambMulti = isNaN(valAmb) ? 1.2 : valAmb;
+  luzAmbiental.intensity = ambMulti;
+  luzDireccional.intensity = ambMulti * 1.15;
+
+  // 3. Sombras Dinámicas
+  const sombrasActivas = selSombras ? (selSombras.value !== 'none') : true;
+  renderer.shadowMap.enabled = sombrasActivas;
+  luzFocal.castShadow = sombrasActivas;
+  luzDireccional.castShadow = sombrasActivas;
+
+  scene.traverse((child) => {
+    if (child.isMesh && child.material) {
+      if (Array.isArray(child.material)) {
+        child.material.forEach((m) => { m.needsUpdate = true; });
+      } else {
+        child.material.needsUpdate = true;
+      }
+    }
+  });
 }
 
 export function iniciarControlesLuces(luzAmb = luzAmbiental, luzFoc = luzFocal, rend = renderer) {
   const cfgFocal = document.getElementById('cfg-luz-focal') || document.getElementById('sel-color-luz');
   if (cfgFocal) {
-    cfgFocal.onchange = (e) => {
-      const val = e.target.value;
-      luzFoc.color.set(val.startsWith('0x') ? parseInt(val) : val);
-    };
+    cfgFocal.addEventListener('change', actualizarAjustesLuces);
+    cfgFocal.addEventListener('input', actualizarAjustesLuces);
   }
 
   const cfgAmb = document.getElementById('cfg-luz-ambiental') || document.getElementById('sel-luz-ambiente');
   if (cfgAmb) {
-    const handler = (e) => { luzAmb.intensity = parseFloat(e.target.value); };
-    cfgAmb.oninput = handler;
-    cfgAmb.onchange = handler;
+    cfgAmb.addEventListener('change', actualizarAjustesLuces);
+    cfgAmb.addEventListener('input', actualizarAjustesLuces);
   }
 
   const cfgSombras = document.getElementById('cfg-sombras') || document.getElementById('sel-sombras');
   if (cfgSombras) {
-    cfgSombras.onchange = (e) => {
-      const v = e.target.value;
-      rend.shadowMap.enabled = (v === 'none' ? false : (e.target.checked !== undefined ? e.target.checked : true));
-    };
+    cfgSombras.addEventListener('change', actualizarAjustesLuces);
+    cfgSombras.addEventListener('input', actualizarAjustesLuces);
   }
 
   const selEscenarioEl = document.getElementById('sel-escenario');
@@ -310,6 +346,8 @@ export function iniciarControlesLuces(luzAmb = luzAmbiental, luzFoc = luzFocal, 
       aplicarEscenario(e.target.value);
     });
   }
+
+  actualizarAjustesLuces();
 }
 
 window.addEventListener('resize', () => {
