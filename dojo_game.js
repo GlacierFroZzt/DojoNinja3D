@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { audio, iniciarControlesAudio } from './js/audio.js';
 import { particulas } from './js/particulas.js';
-import { scene, camera, renderer, luzAmbiental, luzFocal, aplicarEscenario, escenarioActual, iniciarControlesLuces } from './js/escenario.js';
+import { scene, camera, renderer, luzAmbiental, luzFocal, aplicarEscenario, escenarioActual, iniciarControlesLuces, cargarModelosEscenarios } from './js/escenario.js';
 import { cargarNinja, cargarShuriken } from './js/modelos.js';
 import { JugadorNinja } from './js/jugador.js';
 import { red, renderizarLobby, iniciarBotonesSalas } from './js/red.js';
@@ -493,10 +493,11 @@ function animate() {
 
 async function init() {
   try {
-    await Promise.all([cargarNinja(), cargarShuriken()]);
+    await Promise.all([cargarNinja(), cargarShuriken(), cargarModelosEscenarios()]);
     if (jugador) jugador.asignarModelo();
     Object.values(otrosJugadores).forEach(j => j.asignarModelo());
-    console.log('Modelos OBJ originales del Ninja y Shuriken cargados con éxito!');
+    aplicarEscenario(escenarioActual || 'dojo');
+    console.log('Modelos OBJ y escenarios GLB cargados con éxito!');
   } catch (err) {
     console.warn('Carga asíncrona completada con fallback activo:', err);
   }

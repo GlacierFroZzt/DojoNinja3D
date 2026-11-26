@@ -6,3 +6,4 @@ node_modules
 .agents
 .cursor
 .vscode
+puntuaciones_db.json

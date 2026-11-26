@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 export const container = document.getElementById('canvas-container');
 export const scene = new THREE.Scene();
@@ -18,10 +19,14 @@ if (container) {
   container.appendChild(renderer.domElement);
 }
 
-export const luzAmbiental = new THREE.AmbientLight(0xffecc4, 1.2);
+export const luzAmbiental = new THREE.AmbientLight(0xffecc4, 1.4);
 scene.add(luzAmbiental);
 
-export const luzFocal = new THREE.SpotLight(0xffffff, 3.5, 35, Math.PI / 4, 0.4, 1.2);
+export const luzDireccional = new THREE.DirectionalLight(0xfff0dd, 1.6);
+luzDireccional.position.set(6, 18, 12);
+scene.add(luzDireccional);
+
+export const luzFocal = new THREE.SpotLight(0xffffff, 3.5, 45, Math.PI / 4, 0.4, 1.2);
 luzFocal.position.set(0, 8, 4);
 luzFocal.castShadow = true;
 luzFocal.shadow.mapSize.width = 1024;
@@ -141,15 +146,81 @@ for (let z = 15; z > -95; z -= 14) {
   listaColumnas.push(cD);
 }
 
+export const grupoEscenario = new THREE.Group();
+scene.add(grupoEscenario);
+
+export const modelosEscenarios = {
+  dojo: null,
+  ciudad: null,
+  volcan: null
+};
+
+const gltfLoader = new GLTFLoader();
+
+export function cargarModelosEscenarios() {
+  const rutas = {
+    dojo: 'models/escenarios/escenario_dojo.glb',
+    ciudad: 'models/escenarios/escenario_ciudad.glb',
+    volcan: 'models/escenarios/escenario_volcan.glb'
+  };
+
+  const promesas = Object.entries(rutas).map(([clave, ruta]) => {
+    return new Promise((resolve) => {
+      gltfLoader.load(
+        ruta,
+        (gltf) => {
+          const m = gltf.scene;
+          m.traverse((child) => {
+            if (child.isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
+          modelosEscenarios[clave] = m;
+          resolve();
+        },
+        undefined,
+        (err) => {
+          console.warn(`[Escenario] Error al cargar ${ruta}, se usará fallback procedimental.`, err);
+          resolve();
+        }
+      );
+    });
+  });
+
+  return Promise.all(promesas);
+}
+
 export let escenarioActual = 'dojo';
 
 export function aplicarEscenario(esc) {
   escenarioActual = esc;
 
-  if (esc === 'noche' || esc === 'ciudad') {
-    scene.background = new THREE.Color(0x050814);
-    scene.fog.color.setHex(0x060c18);
-    scene.fog.density = 0.014;
+  let clave = 'dojo';
+  if (esc === 'noche' || esc === 'ciudad') clave = 'ciudad';
+  if (esc === 'lava' || esc === 'volcan') clave = 'volcan';
+
+  if (modelosEscenarios[clave]) {
+    suelo.visible = false;
+    muroIzq.visible = false;
+    muroDer.visible = false;
+    listaColumnas.forEach(c => { c.visible = false; });
+
+    grupoEscenario.clear();
+    grupoEscenario.add(modelosEscenarios[clave]);
+    grupoEscenario.visible = true;
+  } else {
+    suelo.visible = true;
+    muroIzq.visible = true;
+    muroDer.visible = true;
+    listaColumnas.forEach(c => { c.visible = true; });
+    grupoEscenario.clear();
+  }
+
+  if (clave === 'ciudad') {
+    scene.background = new THREE.Color(0x0a1020);
+    scene.fog.color.setHex(0x0a1224);
+    scene.fog.density = 0.009;
 
     sueloMat.map = texAsfalto;
     sueloMat.color.setHex(0xffffff);
@@ -161,13 +232,15 @@ export function aplicarEscenario(esc) {
     colMat.color.setHex(0x00e5ff);
     colMat.emissive = new THREE.Color(0x004488);
 
-    luzAmbiental.color.setHex(0x5c7cfa);
-    luzAmbiental.intensity = 1.1;
+    luzAmbiental.color.setHex(0x7090ff);
+    luzAmbiental.intensity = 1.4;
+    luzDireccional.color.setHex(0x88c0ff);
+    luzDireccional.intensity = 1.6;
     luzFocal.color.setHex(0x00e5ff);
-  } else if (esc === 'lava' || esc === 'volcan') {
-    scene.background = new THREE.Color(0x200502);
-    scene.fog.color.setHex(0x280602);
-    scene.fog.density = 0.018;
+  } else if (clave === 'volcan') {
+    scene.background = new THREE.Color(0x280804);
+    scene.fog.color.setHex(0x300a05);
+    scene.fog.density = 0.010;
 
     sueloMat.map = texLava;
     sueloMat.color.setHex(0xffffff);
@@ -179,13 +252,15 @@ export function aplicarEscenario(esc) {
     colMat.color.setHex(0xff3d00);
     colMat.emissive = new THREE.Color(0x661100);
 
-    luzAmbiental.color.setHex(0xff5722);
-    luzAmbiental.intensity = 1.4;
+    luzAmbiental.color.setHex(0xff6633);
+    luzAmbiental.intensity = 1.6;
+    luzDireccional.color.setHex(0xff8844);
+    luzDireccional.intensity = 1.8;
     luzFocal.color.setHex(0xff9100);
   } else {
-    scene.background = new THREE.Color(0x141820);
-    scene.fog.color.setHex(0x141820);
-    scene.fog.density = 0.012;
+    scene.background = new THREE.Color(0x161a24);
+    scene.fog.color.setHex(0x161c28);
+    scene.fog.density = 0.008;
 
     sueloMat.map = texDojo;
     sueloMat.color.setHex(0xffffff);
@@ -198,7 +273,9 @@ export function aplicarEscenario(esc) {
     colMat.emissive = new THREE.Color(0x000000);
 
     luzAmbiental.color.setHex(0xffecc4);
-    luzAmbiental.intensity = 1.2;
+    luzAmbiental.intensity = 1.4;
+    luzDireccional.color.setHex(0xfff0dd);
+    luzDireccional.intensity = 1.6;
     luzFocal.color.setHex(0xffffff);
   }
 }
